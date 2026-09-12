@@ -23,5 +23,16 @@ exists on a machine where someone has run `gh auth login` — which is never the
 case on Replit. Without the token, analysis fails at the point where it tries to
 read pull requests.
 
+## Publishing
+
+Publishing is configured as a single Reserved VM service:
+
+- Build: `cd frontend && npm ci && npm run build`
+- Run: FastAPI serves the built frontend and API on port 5000
+
+The local `Start application` workflow remains a two-process Vite plus
+Uvicorn setup for fast development. The production server serves the compiled
+SPA directly and returns the frontend for client-side routes.
+
 Do not create a Python virtual environment; dependencies are installed directly
 in the Replit environment.
