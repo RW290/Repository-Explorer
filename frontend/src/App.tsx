@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { fetchFixture, pollAnalysis, startAnalysis } from "./api";
 import type { Graph } from "./types";
+import { Spinner } from "./Spinner";
 import { Viewer } from "./Viewer";
 
 type Status = "idle" | "loading" | "error";
@@ -92,33 +93,74 @@ export function App() {
 
   return (
     <div className="landing">
-      <h1>repo-explorer</h1>
-      <p className="landing__subtitle">
-        Explore a repo's architecture, annotated with why things are the way they are.
-      </p>
+      <div className="landing__glow landing__glow--one" />
+      <div className="landing__glow landing__glow--two" />
 
-      <div className="landing__row">
-        <input
-          className="landing__input"
-          value={repoUrl}
-          onChange={(e) => setRepoUrl(e.target.value)}
-          placeholder="https://github.com/owner/repo"
-        />
-        <button className="landing__button" onClick={analyze} disabled={status === "loading"}>
-          Analyze
+      <header className="landing__header">
+        <div className="brand-mark" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </div>
+        <span className="brand-name">repo-explorer</span>
+        <span className="brand-pill">ARCHITECTURE INTELLIGENCE</span>
+      </header>
+
+      <main className="landing__content">
+        <p className="landing__eyebrow">Understand the shape of a codebase</p>
+        <h1>See how a repo <em>really</em> works.</h1>
+        <p className="landing__subtitle">
+          Turn a GitHub repository into an explorable map of its architecture, dependencies, and the
+          decisions that shaped it.
+        </p>
+
+        <div className="landing__form-card">
+          <label className="landing__label" htmlFor="repo-url">GitHub repository URL</label>
+          <div className="landing__row">
+            <div className="landing__input-wrap">
+              <span className="landing__input-icon" aria-hidden="true">↗</span>
+              <input
+                id="repo-url"
+                className="landing__input"
+                value={repoUrl}
+                onChange={(e) => setRepoUrl(e.target.value)}
+                placeholder="https://github.com/owner/repo"
+                disabled={status === "loading"}
+              />
+            </div>
+            <button className="landing__button" onClick={analyze} disabled={status === "loading"}>
+              {status === "loading" ? <Spinner size="sm" /> : <>Analyze repo <span aria-hidden="true">→</span></>}
+            </button>
+          </div>
+          <p className="landing__hint">
+            New analyses take a few minutes. Cached repositories open instantly.
+          </p>
+        </div>
+
+        <button className="landing__fixture" onClick={loadFixture} disabled={status === "loading"}>
+          <span aria-hidden="true">✦</span> Try the interactive demo instead
         </button>
-      </div>
-      <p className="landing__hint">
-        First run for a new repo clones it and calls the LLM for summaries + PR rationale — expect a
-        few minutes. Cached after that.
-      </p>
 
-      <button className="landing__fixture" onClick={loadFixture} disabled={status === "loading"}>
-        Or load the phase-1 fixture demo instead
-      </button>
+        <div className="landing__features">
+          <div><span className="feature-icon">◎</span><span><strong>Map the structure</strong><small>Folders, files & dependencies</small></span></div>
+          <div><span className="feature-icon">✦</span><span><strong>Read the reasoning</strong><small>PRs turned into plain language</small></span></div>
+          <div><span className="feature-icon">⌁</span><span><strong>Explore at your pace</strong><small>Zoom from repo to detail</small></span></div>
+        </div>
+      </main>
 
-      {status === "loading" && <p className="landing__status">{stage || "Starting…"}</p>}
-      {status === "error" && <p className="landing__status landing__status--error">{error}</p>}
+      {status === "loading" && (
+        <div className="loading-card" aria-live="polite">
+          <Spinner label={stage || "Preparing your repository…"} />
+          <p className="loading-card__subtext">This can take a few minutes for a new repo.</p>
+        </div>
+      )}
+      {status === "error" && (
+        <div className="landing__status landing__status--error" role="alert">
+          <span aria-hidden="true">!</span>{error}
+        </div>
+      )}
+
+      <footer className="landing__footer">Built for curious engineers <span>·</span> Python repos, for now</footer>
     </div>
   );
 }
