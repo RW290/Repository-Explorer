@@ -1,0 +1,105 @@
+{
+  "nodes": [
+    { "id": "src/api", "type": "folder", "parent": null, "summary": "HTTP layer: routing, auth, and request middleware.", "dependencies": [], "annotations": [] },
+    { "id": "src/services", "type": "folder", "parent": null, "summary": "Business logic that sits between the API layer and persistence.", "dependencies": [], "annotations": [] },
+    { "id": "src/db", "type": "folder", "parent": null, "summary": "Database client and schema migrations.", "dependencies": [], "annotations": [] },
+    { "id": "src/models", "type": "folder", "parent": null, "summary": "ORM-mapped domain models shared across services and the API layer.", "dependencies": [], "annotations": [] },
+    { "id": "src/ui", "type": "folder", "parent": null, "summary": "React frontend: task list views and shared components.", "dependencies": [], "annotations": [] },
+
+    { "id": "src/api/routes.py", "type": "file", "parent": "src/api", "summary": "Defines REST endpoints for creating, listing, and updating tasks; delegates all business logic to services.", "dependencies": ["src/services/task_service.py", "src/api/auth.py"], "annotations": [] },
+    { "id": "src/api/auth.py", "type": "file", "parent": "src/api", "summary": "Issues and verifies JWTs for API requests.", "dependencies": ["src/models/user.py"], "annotations": ["ann_001"] },
+    { "id": "src/api/middleware.py", "type": "file", "parent": "src/api", "summary": "ASGI middleware that tags each request with a request-id and emits structured logs.", "dependencies": [], "annotations": ["ann_004"] },
+
+    { "id": "src/services/task_service.py", "type": "file", "parent": "src/services", "summary": "Creates, updates, and queries tasks; enforces business rules like ownership checks.", "dependencies": ["src/models/task.py", "src/db/client.py"], "annotations": [] },
+    { "id": "src/services/notification_service.py", "type": "file", "parent": "src/services", "summary": "Sends email reminders for upcoming task due dates via the SMTP provider.", "dependencies": ["src/models/task.py"], "annotations": ["ann_003"] },
+
+    { "id": "src/db/client.py", "type": "file", "parent": "src/db", "summary": "Wraps the SQLAlchemy engine and session factory used by all services.", "dependencies": [], "annotations": ["ann_002"] },
+    { "id": "src/db/migrations.py", "type": "file", "parent": "src/db", "summary": "Alembic migration scripts for the tasks and users tables.", "dependencies": [], "annotations": ["ann_007"] },
+
+    { "id": "src/models/task.py", "type": "file", "parent": "src/models", "summary": "Task ORM model: title, status, owner, and due date.", "dependencies": [], "annotations": ["ann_005"] },
+    { "id": "src/models/user.py", "type": "file", "parent": "src/models", "summary": "User ORM model used for auth and task ownership.", "dependencies": [], "annotations": [] },
+
+    { "id": "src/ui/App.tsx", "type": "file", "parent": "src/ui", "summary": "Top-level React component; handles routing between the task list and login views.", "dependencies": ["src/ui/TaskList.tsx"], "annotations": [] },
+    { "id": "src/ui/TaskList.tsx", "type": "file", "parent": "src/ui", "summary": "Renders the user's tasks and handles pagination.", "dependencies": ["src/ui/components/TaskCard.tsx"], "annotations": ["ann_006"] },
+    { "id": "src/ui/components/TaskCard.tsx", "type": "file", "parent": "src/ui", "summary": "Single-task display component: title, due date, and status toggle.", "dependencies": [], "annotations": [] }
+  ],
+  "annotations": [
+    {
+      "id": "ann_001",
+      "node_id": "src/api/auth.py",
+      "source": "pr",
+      "source_ref": "PR #12",
+      "date": "2023-11-02",
+      "rationale_stated": "Switched from session cookies to JWTs because the mobile client can't store cookies reliably across app restarts.",
+      "rationale_inferred": null,
+      "confidence": "high",
+      "diff_summary": "Replaced cookie-based session middleware with JWT issuance and verification."
+    },
+    {
+      "id": "ann_002",
+      "node_id": "src/db/client.py",
+      "source": "pr",
+      "source_ref": "PR #27",
+      "date": "2024-01-15",
+      "rationale_stated": null,
+      "rationale_inferred": "Diff replaces raw psycopg2 calls with a SQLAlchemy engine/session setup, likely to cut down on repeated query boilerplate and unblock the Alembic migrations added shortly after.",
+      "confidence": "medium",
+      "diff_summary": "Replaced direct psycopg2 usage with a SQLAlchemy engine and session factory."
+    },
+    {
+      "id": "ann_003",
+      "node_id": "src/services/notification_service.py",
+      "source": "pr",
+      "source_ref": "PR #34",
+      "date": "2024-02-20",
+      "rationale_stated": "Added a retry queue after emails silently failed whenever the SMTP provider rate-limited us in production (see issue #31).",
+      "rationale_inferred": null,
+      "confidence": "high",
+      "diff_summary": "Added a retry queue with exponential backoff around outgoing email sends."
+    },
+    {
+      "id": "ann_004",
+      "node_id": "src/api/middleware.py",
+      "source": "pr",
+      "source_ref": "PR #41",
+      "date": "2024-03-05",
+      "rationale_stated": null,
+      "rationale_inferred": "Adds a request-id header plus a structured logging wrapper; the diff shape matches a typical observability retrofit rather than a functional change, but no issue or description confirms this.",
+      "confidence": "low",
+      "diff_summary": "Introduced request-id tagging and structured JSON logging in the ASGI middleware stack."
+    },
+    {
+      "id": "ann_005",
+      "node_id": "src/models/task.py",
+      "source": "pr",
+      "source_ref": "PR #8",
+      "date": "2023-10-10",
+      "rationale_stated": "Added a nullable due_date field per user request in issue #5, to support deadline reminders.",
+      "rationale_inferred": null,
+      "confidence": "high",
+      "diff_summary": "Added a nullable due_date column to the Task model."
+    },
+    {
+      "id": "ann_006",
+      "node_id": "src/ui/TaskList.tsx",
+      "source": "pr",
+      "source_ref": "PR #52",
+      "date": "2024-04-18",
+      "rationale_stated": null,
+      "rationale_inferred": "Swaps a plain array .map() render for react-window virtualization; the diff pattern suggests a performance fix for accounts with large task lists, though no PR description or issue confirms this.",
+      "confidence": "medium",
+      "diff_summary": "Replaced full-list rendering with react-window virtualized rendering."
+    },
+    {
+      "id": "ann_007",
+      "node_id": "src/db/migrations.py",
+      "source": "pr",
+      "source_ref": "PR #58",
+      "date": "2024-04-22",
+      "rationale_stated": "Backfill migration for the due_date column added in PR #8 — existing rows had NULL values and the API had started assuming a default of none-means-no-reminder, which broke the reminder query.",
+      "rationale_inferred": null,
+      "confidence": "high",
+      "diff_summary": "Added a data migration to backfill due_date on pre-existing task rows."
+    }
+  ]
+}
