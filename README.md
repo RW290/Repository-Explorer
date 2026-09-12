@@ -134,9 +134,18 @@ possible, and what's still your call to make before picking a host.
   hardcoded to localhost.
 - The frontend's backend URL is configurable at build time (`VITE_API_BASE`
   in `frontend/.env`) instead of hardcoded to localhost.
-- Gemini quota exhaustion now surfaces a plain-language error to the user
-  instead of a raw stack trace (see `_friendly_error` in `jobs.py`).
 - Added `GET /health` for platform health checks.
+- Every failure that can reach a user is translated into a sentence that
+  says what broke, why, and what to do about it (`backend/app/errors.py`).
+  The layers that touch the outside world — GitHub, Gemini, `git clone` —
+  each map their own failure modes, so nobody sees an argv dump or an exit
+  code. Missing credentials, an invalid or expired token, a private or
+  misspelled repo, a retired Gemini model, and an exhausted daily quota all
+  have their own message. Anything unrecognized is labeled plainly as a bug
+  in this tool rather than dressed up as user error.
+- Daily quota exhaustion is now distinguished from a per-minute rate limit.
+  Both arrive as HTTP 429s, but only the second is worth retrying — the
+  first previously burned five backoff attempts (~15s) before failing.
 
 **Still your call, not done for you:**
 - **Which host.** Backend needs Python + outbound HTTPS + a process that

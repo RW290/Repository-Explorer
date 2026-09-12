@@ -17,6 +17,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from app.errors import PipelineError
 from app.jobs import get_job, start_job
 from app.models import Graph
 from app.pipeline import load_cached, parse_repo_url, run_pipeline
@@ -64,8 +65,8 @@ def get_graph(repo_url: str | None = Query(default=None)) -> Graph:
         graph = run_pipeline(repo_url)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Pipeline failed: {e}")
+    except PipelineError as e:
+        raise HTTPException(status_code=e.http_status, detail=str(e))
     return Graph.model_validate(graph)
 
 

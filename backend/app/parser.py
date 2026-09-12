@@ -12,6 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from app.errors import ConfigurationError, RepoCloneError
 from app.llm import call_llm, call_with_retry
 
 EXCLUDE_DIR_NAMES = {".git", "__pycache__", "node_modules", ".venv", "venv", "docs", "examples"}
@@ -31,13 +32,43 @@ class ParsedNode:
 
 def clone_repo(repo_url: str, workdir: Path) -> Path:
     dest = workdir / "repo"
-    subprocess.run(
-        ["git", "clone", "--depth", "1", repo_url, str(dest)],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+    try:
+        subprocess.run(
+            ["git", "clone", "--depth", "1", repo_url, str(dest)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        raise ConfigurationError(
+            "The `git` command isn't available on this server, so repositories can't be "
+            "downloaded for analysis. Install git in the deployment environment."
+        ) from None
+    except subprocess.CalledProcessError as e:
+        raise _translate_clone_error(e, repo_url) from None
     return dest
+
+
+def _translate_clone_error(e: subprocess.CalledProcessError, repo_url: str) -> Exception:
+    stderr = (e.stderr or "").strip()
+    lowered = stderr.lower()
+    if "not found" in lowered or "repository not found" in lowered:
+        return RepoCloneError(
+            f"There's no public repository at {repo_url}. Check the URL for typos — private "
+            "repositories can't be analyzed unless this server has credentials for them."
+        )
+    if "authentication failed" in lowered or "could not read username" in lowered:
+        return RepoCloneError(
+            f"{repo_url} needs credentials to download, which usually means it's private. "
+            "This tool can only analyze repositories it can read anonymously."
+        )
+    if "could not resolve host" in lowered or "network" in lowered or "timed out" in lowered:
+        return RepoCloneError(
+            "Couldn't reach GitHub to download the repository. Check this server's network "
+            "connection and try again."
+        )
+    detail = stderr.splitlines()[-1] if stderr else f"git exited with code {e.returncode}"
+    return RepoCloneError(f"Downloading {repo_url} failed: {detail}")
 
 
 def discover_python_files(repo_root: Path) -> list[Path]:

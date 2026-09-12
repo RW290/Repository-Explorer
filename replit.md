@@ -8,10 +8,20 @@ Use the **Start application** workflow. It starts:
 The Vite development server proxies `/api` and `/health` to the backend, so
 frontend requests work through the Replit preview without hardcoded hostnames.
 
-The fixture demo works without credentials. To analyze a new GitHub repository,
-add `GEMINI_API_KEY` in Replit Secrets. `GITHUB_TOKEN` is optional for public
-repositories when the local GitHub CLI is authenticated, but should be supplied
-as a secret for reliable hosted use.
+The fixture demo works without credentials.
+
+To analyze a real GitHub repository, add **both** secrets in Replit Secrets:
+
+- `GEMINI_API_KEY` — for file summaries and PR rationale (free key at
+  aistudio.google.com).
+- `GITHUB_TOKEN` — a personal access token with read access to public
+  repositories.
+
+`GITHUB_TOKEN` is **required here**, not optional. The backend can fall back to
+the `gh` command-line tool's login session instead of a token, but that only
+exists on a machine where someone has run `gh auth login` — which is never the
+case on Replit. Without the token, analysis fails at the point where it tries to
+read pull requests.
 
 Do not create a Python virtual environment; dependencies are installed directly
 in the Replit environment.

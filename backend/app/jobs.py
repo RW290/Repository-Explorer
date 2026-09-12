@@ -16,6 +16,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 
+from app.errors import PipelineError
 from app.pipeline import run_pipeline
 
 Status = str  # "pending" | "running" | "done" | "error"
@@ -62,16 +63,16 @@ def _make_reporter(job: Job):
 
 
 def _friendly_error(e: Exception) -> str:
-    text = str(e)
-    if "RESOURCE_EXHAUSTED" in text or ("429" in text and "quota" in text.lower()):
-        return (
-            "The free daily AI quota for this tool has been used up for today. "
-            "This runs on Gemini's free tier by design (see the build brief) — "
-            "try again after the quota resets, or use a repo that's already cached."
-        )
-    if "clone" in text.lower() and ("not found" in text.lower() or "128" in text):
-        return "Could not clone that repository — check the URL and that it's public."
-    return text
+    """PipelineError messages are already written for a reader (see errors.py).
+    Anything else is a bug rather than an expected failure, so say that plainly
+    instead of leaking a traceback fragment or an argv dump at the user."""
+    if isinstance(e, PipelineError):
+        return str(e)
+    detail = str(e).splitlines()[0][:200] if str(e) else e.__class__.__name__
+    return (
+        "Something went wrong inside this tool while analyzing that repository — "
+        f"this is a bug, not something you did. Technical detail: {detail}"
+    )
 
 
 def get_job(job_id: str) -> Job | None:

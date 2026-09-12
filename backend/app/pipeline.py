@@ -25,7 +25,11 @@ CACHE_DIR = Path(__file__).resolve().parent.parent / ".cache"
 def parse_repo_url(repo_url: str) -> tuple[str, str]:
     match = re.search(r"github\.com[:/]([^/]+)/([^/.]+?)(?:\.git)?/?$", repo_url.strip())
     if not match:
-        raise ValueError(f"Could not parse owner/repo from {repo_url!r}")
+        raise ValueError(
+            f"{repo_url.strip()!r} doesn't look like a GitHub repository address. Use the "
+            "form https://github.com/owner/repository — a link to a specific file, branch, "
+            "or pull request won't work, and only GitHub is supported."
+        )
     return match.group(1), match.group(2)
 
 
