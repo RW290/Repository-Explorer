@@ -31,8 +31,15 @@ def _client() -> genai.Client:
     return _client_instance
 
 
-def call_llm(prompt: str, model: str = "gemini-flash-latest") -> str:
+def call_llm(prompt: str, model: str = "gemini-3.6-flash") -> str:
     """Send one prompt, return the raw text response.
+
+    Pinned to a specific version rather than "gemini-flash-latest": that
+    alias silently resolved to a preview model (gemini-3.8-flash) with a
+    much stricter free-tier quota (20 requests/day, vs. the usual
+    per-minute rate limit) — confirm the current recommended alias at
+    aistudio.google.com before changing this, per the build brief's own
+    warning that Google renames/versions these periodically.
 
     Guards against ever pointing this at a Pro (billed) model — that's the
     one thing that turns this tool from free to billed.

@@ -126,16 +126,27 @@ def _extraction_prompt(batch: list[dict]) -> str:
     )
     return f"""For each pull request below, extract why the change was made.
 
+Write every text field for a curious reader who has never seen this codebase
+and isn't a programmer — plain, everyday language, like explaining it to a
+friend. Avoid unexplained jargon (e.g. "API", "cache", "middleware", "async",
+"CVE"); if a technical term or identifier is essential to keep (a CVE number,
+a function name, a library name), keep it but briefly explain what it means
+in plain words right next to it. Do not change or soften the actual facts —
+only change how plainly they're explained.
+
 Return ONLY a JSON array of objects, one per PR, each with these exact fields:
 - "number": the PR number (integer)
-- "rationale_stated": if a "Stated description" is given, a concise 1-2 sentence
-  paraphrase of the author's own stated reason. If none is given, null.
+- "rationale_stated": if a "Stated description" is given, a plain-language
+  1-2 sentence account of the author's own stated reason — faithful to what
+  they actually said, just de-jargoned. If none is given, null.
 - "rationale_inferred": only fill this in if there was no stated description —
-  your best 1-2 sentence guess at the reason, based solely on the diff. Otherwise null.
+  your best 1-2 sentence plain-language guess at the reason, based solely on
+  the diff. Otherwise null.
 - "confidence": "high" if rationale_stated is filled from a clear description,
   "medium" if rationale_inferred from an unambiguous diff pattern, "low" if
   rationale_inferred from an ambiguous diff.
-- "diff_summary": one sentence describing what changed, regardless of why.
+- "diff_summary": one plain-language sentence describing what changed,
+  regardless of why.
 
 Never fill in both rationale_stated and rationale_inferred for the same PR.
 

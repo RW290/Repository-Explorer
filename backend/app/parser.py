@@ -13,8 +13,8 @@ from pathlib import Path
 
 from app.llm import call_llm, call_with_retry
 
-INCLUDE_DIR_PREFIXES = ("src/", "tests/", "lib/")
 EXCLUDE_DIR_NAMES = {".git", "__pycache__", "node_modules", ".venv", "venv", "docs", "examples"}
+ROOT_FOLDER_ID = "(root)"
 MAX_FILE_CHARS_FOR_SUMMARY = 3000
 SUMMARY_BATCH_SIZE = 6
 
@@ -45,16 +45,14 @@ def discover_python_files(repo_root: Path) -> list[Path]:
         rel = path.relative_to(repo_root)
         if any(part in EXCLUDE_DIR_NAMES for part in rel.parts):
             continue
-        if not str(rel).startswith(INCLUDE_DIR_PREFIXES):
-            continue
         files.append(path)
     return sorted(files)
 
 
-def folder_id_for(rel_path: Path) -> str | None:
+def folder_id_for(rel_path: Path) -> str:
     parts = rel_path.parts[:-1]
     if not parts:
-        return None
+        return ROOT_FOLDER_ID
     if parts[0] in ("src", "lib") and len(parts) > 1:
         return f"{parts[0]}/{parts[1]}"
     return parts[0]
@@ -101,7 +99,7 @@ def _resolve_import(
             return results
         parts = module.split(".")
         root_pkg = parts[0]
-        for prefix in ("src/", "lib/"):
+        for prefix in ("", "src/", "lib/"):
             base = f"{prefix}{'/'.join(parts)}"
             if f"{base}.py" in known_files:
                 results.append(f"{base}.py")
@@ -160,6 +158,15 @@ def _summary_prompt(batch: list[tuple[str, str]]) -> str:
         f"### {path}\n```\n{content[:MAX_FILE_CHARS_FOR_SUMMARY]}\n```" for path, content in batch
     )
     return f"""For each file below, write a one-paragraph summary of its role in the codebase.
+
+Write for someone who has never seen this codebase and isn't a programmer —
+a curious non-technical reader. Explain what the file is FOR in plain,
+everyday language, as if describing it to a friend. Avoid unexplained
+jargon: don't assume the reader knows terms like "API", "WebSocket",
+"middleware", "ORM", "async", or similar. If a technical term is
+unavoidable, briefly explain what it means in plain words right there in
+the sentence. Prefer concrete, everyday analogies over technical precision.
+
 Return ONLY a JSON array of objects with "path" and "summary" fields, no other text.
 
 Files:

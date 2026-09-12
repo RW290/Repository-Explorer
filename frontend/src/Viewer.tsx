@@ -56,6 +56,14 @@ export function Viewer({ graph, onBack }: Props) {
     () => fitScale(siblingPositions, canvasW, viewportH, 0.5, 6),
     [siblingPositions, canvasW, viewportH],
   );
+  // Never zoom out below the folder view, but always guarantee the single selected card
+  // fits the canvas — a flat multiplier on folderScale could compound past on-screen size
+  // when the folder was already sparse enough to hit folderScale's own max.
+  const fileScale = useMemo(
+    () =>
+      selectedNodeId ? fitScale([positions[selectedNodeId]], canvasW, viewportH, folderScale, 8) : folderScale,
+    [selectedNodeId, positions, canvasW, viewportH, folderScale],
+  );
 
   const target =
     level === "repo"
@@ -63,7 +71,7 @@ export function Viewer({ graph, onBack }: Props) {
       : level === "folder"
         ? positions[activeFolderId!]
         : positions[selectedNodeId!];
-  const scale = level === "repo" ? 1 : level === "folder" ? folderScale : folderScale * 2.4;
+  const scale = level === "repo" ? 1 : level === "folder" ? folderScale : fileScale;
 
   const tx = canvasW / 2 - target.x * scale;
   const ty = viewportH / 2 - target.y * scale;

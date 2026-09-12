@@ -11,11 +11,17 @@ breadth of repos it works on.
 
 ## Status
 
-**All 4 phases done for one validated target repo: [psf/requests](https://github.com/psf/requests).**
+**All 4 phases done, validated against two structurally different repos:**
+[psf/requests](https://github.com/psf/requests) (mature, `src/`-layout,
+heavy PR discipline) and
+[CommanderBlop/scribe-dictation](https://github.com/CommanderBlop/scribe-dictation)
+(small solo project, flat layout, almost no PR history).
 
 - **Parser** (`backend/app/parser.py`) — shallow-clones the repo, builds a
   file-level import graph via Python's `ast` module (no LLM), then batches
-  files into Gemini Flash calls for summaries.
+  files into Gemini Flash calls for summaries. File discovery works for any
+  layout (not just `src/`), and import resolution handles both absolute and
+  relative imports.
 - **Miner** (`backend/app/miner.py`) — fetches merged PRs via the GitHub
   GraphQL API (through the `gh` CLI, so no raw token is ever handled or
   stored), filters trivial/irrelevant diffs locally, and batches the rest
@@ -27,17 +33,22 @@ breadth of repos it works on.
   data. The landing screen lets you type a repo URL; results are cached to
   `backend/.cache/` (gitignored) since a fresh run costs real LLM/API calls.
 
-Spot-checked a sample of `psf/requests` annotations by hand against the
-actual PRs (e.g. the CVE-2024-47081 fix, the SSLContext-caching revert in
-v2.32.5) — rationale text matched the real PR content, and thin/missing
-PR descriptions correctly fell back to `rationale_inferred` with lower
-confidence rather than being presented as stated fact.
+All LLM-written text (file summaries and PR rationale) is prompted to read
+as plain language for a non-technical reader — no unexplained jargon, terms
+briefly explained inline when unavoidable — without softening or changing
+the underlying facts.
 
-Only `psf/requests` has been validated end-to-end. The parser's import
-resolution is written generically (absolute + relative imports, `src/`
-layout awareness) but only tested against that one repo's layout — other
-repos, especially non-`src`-layout or heavily dynamic-import codebases,
-may need adjustments.
+Spot-checked a sample of annotations from both repos by hand against the
+actual PRs (e.g. `requests`' CVE-2024-47081 fix and v2.32.5 SSLContext
+revert; `scribe-dictation`'s session-mode and pacing-timer PRs) — rationale
+text matched the real PR content, and thin/missing PR descriptions
+correctly fell back to `rationale_inferred` with lower confidence rather
+than being presented as stated fact.
+
+The parser's import resolution (absolute + relative imports, `src/`-layout
+awareness with a generic fallback) and PR mining have now been exercised
+against two differently-shaped repos, but still only Python ones — a
+heavily dynamic-import codebase or a non-Python repo hasn't been tried.
 
 ## Layout
 
@@ -79,7 +90,12 @@ cached); type a different repo URL to run the pipeline fresh, or use the
 `GEMINI_API_KEY` lives in `.env` at the repo root (gitignored, never
 committed). Get/rotate it at [aistudio.google.com](https://aistudio.google.com).
 `llm.py` refuses to call any model whose name doesn't contain "flash" —
-that's the one thing that would turn this from free to billed.
+that's the one thing that would turn this from free to billed. The default
+model is pinned to a specific version (`gemini-3.6-flash` as of writing),
+not a `-latest` alias — an alias silently resolved to a preview model with
+a 20-requests-*per day* free quota (much stricter than the usual per-minute
+limit) partway through building this. Check aistudio.google.com for the
+current recommended Flash version before assuming this pin is still right.
 
 GitHub API access goes through the `gh` CLI's own stored auth (`gh auth
 login`) rather than a token in `.env` — nothing GitHub-related needs a
@@ -87,14 +103,19 @@ secret checked in or copy-pasted.
 
 ## Known limitations / not yet done
 
-- Only tested against one repo (`psf/requests`). No multi-language support,
-  by design (v1 scope, Python only).
+- Tested against two Python repos only. No multi-language support, by
+  design (v1 scope, Python only) — untried on non-Python or heavily
+  dynamic-import codebases.
 - The viewer's zoom model is 2 levels deep (folder → file); a repo with
-  deeply nested subpackages gets flattened one level, which is fine for
-  `requests`'s shallow layout but would lose structure on a deeply nested
-  repo.
+  deeply nested subpackages gets flattened one level.
 - Annotation mining is capped at the 40 most recently updated merged PRs
   per repo, filtered down to non-trivial ones — a deliberate cost/latency
-  tradeoff, not full history.
+  tradeoff, not full history. A repo with very little PR history (like
+  `scribe-dictation`) will surface only a handful of annotations, which is
+  correct behavior (the brief calls for degrading to mostly-null rather
+  than fabricating), not a bug.
+- Free-tier Gemini quota is the practical bottleneck: roughly one
+  medium-sized repo's worth of fresh analysis per day on a single API key.
+  Cached repos are unaffected.
 - No "generate a build-your-own playbook" feature — out of scope for v1 per
   the build brief.
