@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -23,6 +24,7 @@ from app.models import Graph
 from app.pipeline import load_cached, parse_repo_url, run_pipeline
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures"
+FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 
 app = FastAPI(title="repo-explorer backend")
 
@@ -51,6 +53,19 @@ class AnalysisStatus(BaseModel):
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/")
+def serve_frontend() -> FileResponse:
+    """Serve the built SPA in production.
+
+    Local development uses Vite on port 5000, while published deployments run
+    one FastAPI process that serves both the API and the compiled frontend.
+    """
+    index = FRONTEND_DIST / "index.html"
+    if not index.is_file():
+        raise HTTPException(status_code=404, detail="Frontend build not found")
+    return FileResponse(index)
 
 
 @app.get("/api/graph", response_model=Graph)
@@ -93,3 +108,17 @@ def get_analysis(job_id: str) -> AnalysisStatus:
         raise HTTPException(status_code=404, detail="No job with that id")
     graph = Graph.model_validate(job.result) if job.result is not None else None
     return AnalysisStatus(job_id=job.id, status=job.status, stage=job.stage, graph=graph, error=job.error)
+
+
+@app.get("/{frontend_path:path}")
+def serve_frontend_assets(frontend_path: str) -> FileResponse:
+    """Serve Vite assets and fall back to index.html for SPA routes."""
+    requested = (FRONTEND_DIST / frontend_path).resolve()
+    dist_root = FRONTEND_DIST.resolve()
+    if requested.is_relative_to(dist_root) and requested.is_file():
+        return FileResponse(requested)
+
+    index = FRONTEND_DIST / "index.html"
+    if index.is_file():
+        return FileResponse(index)
+    raise HTTPException(status_code=404, detail="Frontend build not found")
