@@ -57,7 +57,7 @@ export function centroid(points: Point[]): Point {
 }
 
 const NODE_W = 160;
-const NODE_H = 110;
+const NODE_H = 130;
 
 /** Scale that fits a set of world points (plus node size) inside the canvas, so a folder's
  * children stay on screen regardless of how many there are or how the layout spaced them. */

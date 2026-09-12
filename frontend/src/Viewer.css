@@ -81,6 +81,10 @@
   font-size: 0.55rem;
   color: #9aa4b2;
   line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .detail-panel {

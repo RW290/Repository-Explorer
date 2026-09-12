@@ -17,8 +17,18 @@ _ALLOWED_MODEL_SUBSTRING = "flash"
 T = TypeVar("T")
 
 
+_client_instance: genai.Client | None = None
+
+
 def _client() -> genai.Client:
-    return genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    # Must be a held singleton, not a fresh instance per call — a throwaway
+    # genai.Client gets garbage-collected mid-request (its httpx client closes
+    # under it), which surfaces as "Cannot send a request, as the client has
+    # been closed."
+    global _client_instance
+    if _client_instance is None:
+        _client_instance = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    return _client_instance
 
 
 def call_llm(prompt: str, model: str = "gemini-flash-latest") -> str:
@@ -36,17 +46,21 @@ def call_llm(prompt: str, model: str = "gemini-flash-latest") -> str:
     return response.text
 
 
+_RETRYABLE_MARKERS = ("429", "503", "UNAVAILABLE")
+
+
 def call_with_retry(fn: Callable[[], T], max_retries: int = 5) -> T:
     """Retry-with-backoff wrapper for call_llm invocations.
 
-    Flash's free tier is roughly 15 requests/minute; back off on 429s
-    instead of failing the whole batch.
+    Flash's free tier is roughly 15 requests/minute (429s); the API also
+    occasionally returns transient 503s under general load. Back off on
+    either instead of failing the whole batch.
     """
     for attempt in range(max_retries):
         try:
             return fn()
         except Exception as e:
-            if "429" in str(e) and attempt < max_retries - 1:
+            if any(m in str(e) for m in _RETRYABLE_MARKERS) and attempt < max_retries - 1:
                 time.sleep(2**attempt)
             else:
                 raise

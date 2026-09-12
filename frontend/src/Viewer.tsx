@@ -8,11 +8,18 @@ type Level = "repo" | "folder" | "file";
 
 const PANEL_WIDTH = 360;
 
-interface Props {
-  graph: Graph;
+function truncate(text: string, max: number): string {
+  const firstSentence = text.split(/(?<=[.!?])\s/)[0] ?? text;
+  const base = firstSentence.length <= max ? firstSentence : text;
+  return base.length > max ? `${base.slice(0, max - 1).trimEnd()}…` : base;
 }
 
-export function Viewer({ graph }: Props) {
+interface Props {
+  graph: Graph;
+  onBack: () => void;
+}
+
+export function Viewer({ graph, onBack }: Props) {
   const positions = useMemo(() => computeLayout(graph.nodes), [graph.nodes]);
   const byId = useMemo(() => {
     const map = new Map<string, GraphNode>();
@@ -43,7 +50,10 @@ export function Viewer({ graph }: Props) {
     [graph.nodes, activeFolderId, positions],
   );
   const folderScale = useMemo(
-    () => fitScale(siblingPositions, canvasW, viewportH, 1.5, 6),
+    // No floor above ~repo scale: a folder with many children legitimately needs more screen
+    // room than one with few, and forcing a higher minimum just clips content off-screen
+    // (card size and spacing both scale together, so shrinking here never causes overlap).
+    () => fitScale(siblingPositions, canvasW, viewportH, 0.5, 6),
     [siblingPositions, canvasW, viewportH],
   );
 
@@ -93,6 +103,10 @@ export function Viewer({ graph }: Props) {
   return (
     <div className="viewer">
       <div className="breadcrumbs">
+        <button onClick={onBack} title="Back to repo picker">
+          ←
+        </button>
+        <span className="breadcrumbs__sep">/</span>
         <button onClick={goToRepo} className={level === "repo" ? "active" : ""}>
           repo
         </button>
@@ -135,7 +149,7 @@ export function Viewer({ graph }: Props) {
             >
               <div className="node__name">{node.id.split("/").pop()}</div>
               {level !== "repo" && node.type === "file" && (
-                <div className="node__summary">{node.summary}</div>
+                <div className="node__summary">{truncate(node.summary, 70)}</div>
               )}
             </div>
           );
