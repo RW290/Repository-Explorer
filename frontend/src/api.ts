@@ -1,8 +1,8 @@
 import type { AnalysisStatus, Graph } from "./types";
 
-// Configurable at build time (Vite): set VITE_API_BASE to the deployed backend's
-// URL. Falls back to localhost for local dev.
-const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
+// Use same-origin API paths by default so Replit's proxy can route requests to
+// the local backend. A separately deployed backend can still be configured.
+const API_BASE = import.meta.env.VITE_API_BASE ?? "";
 
 async function asJson<T>(res: Response): Promise<T> {
   if (!res.ok) {
