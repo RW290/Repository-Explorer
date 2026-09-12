@@ -25,3 +25,11 @@ export interface Graph {
   nodes: GraphNode[];
   annotations: Annotation[];
 }
+
+export interface AnalysisStatus {
+  job_id: string | null;
+  status: "pending" | "running" | "done" | "error";
+  stage: string;
+  graph: Graph | null;
+  error: string | null;
+}

@@ -1,18 +1,19 @@
 """History miner (phase 3): PR extraction via the GitHub GraphQL API.
 
-Shells out to the `gh` CLI rather than handling a raw PAT ourselves — it
-already holds an authenticated session, so there's no token to store or
-leak. One GraphQL call fetches a page of merged PRs (title, body, merge
-commit, changed files) in one round trip; `gh pr diff` is only called
-per-PR for the minority that need diff-based inference (no stated
-rationale), keeping LLM/API round trips batched per the latency constraint.
+Goes through app.github_client (gh CLI locally, GITHUB_TOKEN when
+deployed) rather than handling auth itself. One GraphQL call fetches a
+page of merged PRs (title, body, merge commit, changed files) in one round
+trip; a diff fetch is only made per-PR for the minority that need
+diff-based inference (no stated rationale), keeping LLM/API round trips
+batched per the latency constraint.
 """
 
 import json
-import subprocess
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 
+from app import github_client
 from app.llm import call_llm, call_with_retry
 
 PR_PAGE_SIZE = 100
@@ -51,19 +52,11 @@ class RawPR:
     files: list[str]
 
 
-def _gh_graphql(owner: str, name: str, cursor: str | None) -> dict:
-    args = ["gh", "api", "graphql", "-f", f"query={GRAPHQL_QUERY}", "-f", f"owner={owner}", "-f", f"name={name}"]
-    if cursor:
-        args += ["-f", f"cursor={cursor}"]
-    result = subprocess.run(args, check=True, capture_output=True, text=True)
-    return json.loads(result.stdout)
-
-
 def fetch_merged_prs(owner: str, name: str, limit: int = MAX_PRS_TO_MINE) -> list[RawPR]:
     prs: list[RawPR] = []
     cursor = None
     while len(prs) < limit:
-        data = _gh_graphql(owner, name, cursor)
+        data = github_client.graphql(GRAPHQL_QUERY, {"owner": owner, "name": name, "cursor": cursor})
         page = data["data"]["repository"]["pullRequests"]
         for node in page["nodes"]:
             prs.append(
@@ -108,15 +101,6 @@ def _candidate_stated_rationale(pr: RawPR) -> str | None:
     return None
 
 
-def _fetch_diff(owner: str, name: str, number: int) -> str:
-    result = subprocess.run(
-        ["gh", "pr", "diff", str(number), "-R", f"{owner}/{name}"],
-        capture_output=True,
-        text=True,
-    )
-    return result.stdout[:4000] if result.returncode == 0 else ""
-
-
 def _extraction_prompt(batch: list[dict]) -> str:
     items_text = "\n\n".join(
         f"### PR #{item['number']}: {item['title']}\n"
@@ -155,17 +139,22 @@ Pull requests:
 """
 
 
-def extract_rationales(owner: str, name: str, prs: list[RawPR]) -> list[dict]:
+def extract_rationales(
+    owner: str, name: str, prs: list[RawPR], on_stage: Callable[[str], None] | None = None
+) -> list[dict]:
     items = []
     for pr in prs:
         stated = _candidate_stated_rationale(pr)
-        diff = "" if stated else _fetch_diff(owner, name, pr.number)
+        diff = "" if stated else github_client.pr_diff(owner, name, pr.number)[:4000]
         items.append({"number": pr.number, "title": pr.title, "files": pr.files, "stated": stated, "diff": diff})
 
     extractions: list[dict] = []
+    batch_count = -(-len(items) // RATIONALE_BATCH_SIZE) if items else 0
     for i in range(0, len(items), RATIONALE_BATCH_SIZE):
         if i > 0:
             time.sleep(2)
+        if on_stage:
+            on_stage(f"extracting PR rationale (batch {i // RATIONALE_BATCH_SIZE + 1}/{batch_count})")
         batch = items[i : i + RATIONALE_BATCH_SIZE]
         prompt = _extraction_prompt(batch)
         raw = call_with_retry(lambda: call_llm(prompt))
@@ -203,7 +192,11 @@ def extract_rationales(owner: str, name: str, prs: list[RawPR]) -> list[dict]:
     return merged
 
 
-def run_miner(owner: str, name: str, known_files: set[str]) -> list[dict]:
+def run_miner(
+    owner: str, name: str, known_files: set[str], on_stage: Callable[[str], None] | None = None
+) -> list[dict]:
+    if on_stage:
+        on_stage("fetching merged pull requests")
     prs = fetch_merged_prs(owner, name)
     non_trivial = [pr for pr in prs if not is_trivial(pr, known_files)]
-    return extract_rationales(owner, name, non_trivial)
+    return extract_rationales(owner, name, non_trivial, on_stage=on_stage)

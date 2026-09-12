@@ -1,34 +1,62 @@
 """API server for the repo breakdown viewer.
 
 GET /api/graph with no query params serves the phase-1 fixture (kept as a
-zero-cost, zero-latency demo). Passing ?repo_url=... runs the real
-parser -> miner -> merge pipeline on demand (cached to disk per repo) and
-returns that instead. Either way, all graph data is fetched once per repo,
-never re-fetched during client-side pan/zoom.
+zero-cost, zero-latency demo).
+
+Analyzing a real repo is async: POST /api/analyze starts the pipeline in a
+background job (or returns the cached result immediately if there is one)
+and GET /api/analyze/{job_id} polls for its status. This exists because the
+full pipeline takes minutes — a hosting platform's request/proxy timeout
+would kill a synchronous call long before it finished.
 """
 
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
+from app.jobs import get_job, start_job
 from app.models import Graph
-from app.pipeline import run_pipeline
+from app.pipeline import load_cached, parse_repo_url, run_pipeline
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures"
 
 app = FastAPI(title="repo-explorer backend")
 
+_default_origins = "http://localhost:5173"
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
-    allow_methods=["GET"],
+    allow_origins=os.environ.get("CORS_ORIGINS", _default_origins).split(","),
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
 
+class AnalyzeRequest(BaseModel):
+    repo_url: str
+    force_refresh: bool = False
+
+
+class AnalysisStatus(BaseModel):
+    job_id: str | None = None
+    status: str
+    stage: str = ""
+    graph: Graph | None = None
+    error: str | None = None
+
+
+@app.get("/health")
+def health() -> dict:
+    return {"status": "ok"}
+
+
 @app.get("/api/graph", response_model=Graph)
 def get_graph(repo_url: str | None = Query(default=None)) -> Graph:
+    """Synchronous path — fine for local dev/self-hosting, but a hosted
+    deployment should use POST /api/analyze instead to avoid request
+    timeouts on an uncached repo."""
     if repo_url is None:
         data = (FIXTURES_DIR / "sample_graph.json").read_text()
         return Graph.model_validate_json(data)
@@ -39,3 +67,28 @@ def get_graph(repo_url: str | None = Query(default=None)) -> Graph:
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Pipeline failed: {e}")
     return Graph.model_validate(graph)
+
+
+@app.post("/api/analyze", response_model=AnalysisStatus)
+def start_analysis(payload: AnalyzeRequest) -> AnalysisStatus:
+    try:
+        parse_repo_url(payload.repo_url)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if not payload.force_refresh:
+        cached = load_cached(payload.repo_url)
+        if cached is not None:
+            return AnalysisStatus(status="done", graph=Graph.model_validate(cached))
+
+    job = start_job(payload.repo_url, force_refresh=payload.force_refresh)
+    return AnalysisStatus(job_id=job.id, status=job.status, stage=job.stage)
+
+
+@app.get("/api/analyze/{job_id}", response_model=AnalysisStatus)
+def get_analysis(job_id: str) -> AnalysisStatus:
+    job = get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="No job with that id")
+    graph = Graph.model_validate(job.result) if job.result is not None else None
+    return AnalysisStatus(job_id=job.id, status=job.status, stage=job.stage, graph=graph, error=job.error)

@@ -8,6 +8,7 @@ for the batched file summaries, never for the dependency edges themselves.
 
 import ast
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -174,7 +175,9 @@ Files:
 """
 
 
-def summarize_files(repo_root: Path, files: list[Path]) -> dict[str, str]:
+def summarize_files(
+    repo_root: Path, files: list[Path], on_stage: Callable[[str], None] | None = None
+) -> dict[str, str]:
     import json
     import time
 
@@ -188,9 +191,12 @@ def summarize_files(repo_root: Path, files: list[Path]) -> dict[str, str]:
             text = ""
         contents.append((rel, text))
 
+    batch_count = -(-len(contents) // SUMMARY_BATCH_SIZE) if contents else 0
     for i in range(0, len(contents), SUMMARY_BATCH_SIZE):
         if i > 0:
             time.sleep(2)
+        if on_stage:
+            on_stage(f"summarizing files (batch {i // SUMMARY_BATCH_SIZE + 1}/{batch_count})")
         batch = contents[i : i + SUMMARY_BATCH_SIZE]
         prompt = _summary_prompt(batch)
         raw = call_with_retry(lambda: call_llm(prompt))
@@ -211,14 +217,18 @@ def build_folder_summary(folder_id: str, child_ids: list[str]) -> str:
     return f"Folder containing {len(child_ids)} file(s): {names}{suffix}."
 
 
-def run_parser(repo_url: str, workdir: Path) -> list[ParsedNode]:
+def run_parser(repo_url: str, workdir: Path, on_stage: Callable[[str], None] | None = None) -> list[ParsedNode]:
+    if on_stage:
+        on_stage("cloning repository")
     repo_root = clone_repo(repo_url, workdir)
     files = discover_python_files(repo_root)
+    if on_stage:
+        on_stage(f"analyzing {len(files)} files")
     dependencies = build_dependency_graph(repo_root, files)
     nodes = build_nodes(repo_root, files, dependencies)
 
     file_nodes = [n for n in nodes if n.type == "file"]
-    summaries = summarize_files(repo_root, [repo_root / n.id for n in file_nodes])
+    summaries = summarize_files(repo_root, [repo_root / n.id for n in file_nodes], on_stage=on_stage)
     for n in file_nodes:
         n.summary = summaries.get(n.id, "")
 
