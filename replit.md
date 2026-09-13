@@ -26,7 +26,10 @@ read pull requests.
 
 ## Publishing
 
-Publishing is configured as a single Reserved VM service:
+Publishing is configured as a single Autoscale service (scales to zero when
+idle, so a sporadically-used deployment doesn't pay for 24/7 uptime the way a
+Reserved VM would — set a spending limit in Replit's billing settings, since
+it's opt-in and not on by default):
 
 - Build: `cd frontend && npm ci && npm run build`
 - Run: FastAPI serves the built frontend and API on port 5000
@@ -34,6 +37,10 @@ Publishing is configured as a single Reserved VM service:
 The local `Start application` workflow remains a two-process Vite plus
 Uvicorn setup for fast development. The production server serves the compiled
 SPA directly and returns the frontend for client-side routes.
+
+When actually publishing, the deployment type (Autoscale vs. Reserved VM) is
+also selected in Replit's Deploy panel UI — the `deploymentTarget` in
+`.replit` alone doesn't switch an existing deployment's type.
 
 Do not create a Python virtual environment; dependencies are installed directly
 in the Replit environment.
