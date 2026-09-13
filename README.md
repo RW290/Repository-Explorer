@@ -99,15 +99,18 @@ cached); type a different repo URL to run the pipeline fresh, or use the
 
 ## Secrets
 
-`GEMINI_API_KEY` lives in `.env` at the repo root (gitignored, never
-committed). Get/rotate it at [aistudio.google.com](https://aistudio.google.com).
-`llm.py` refuses to call any model whose name doesn't contain "flash" —
-that's the one thing that would turn this from free to billed. The default
-model is pinned to a specific version (`gemini-3.6-flash` as of writing),
-not a `-latest` alias — an alias silently resolved to a preview model with
-a 20-requests-*per day* free quota (much stricter than the usual per-minute
-limit) partway through building this. Check aistudio.google.com for the
-current recommended Flash version before assuming this pin is still right.
+`HF_TOKEN` lives in `.env` at the repo root (gitignored, never committed).
+Create/rotate it at
+[huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) —
+read access is enough. File summaries and PR rationale run against an
+open-weight model (`meta-llama/Llama-3.1-8B-Instruct` by default) served
+through Hugging Face's hosted Inference Providers, not a model run on this
+server or in the browser. Not every model listed on HF is actually
+servable this way — several reasonable-looking alternatives (Qwen2.5-7B-
+Instruct, Mistral-7B-Instruct-v0.3, Phi-3.5-mini-instruct) currently fail
+because no enabled provider serves them on the free serverless tier, only
+on paid dedicated endpoints — see the comment above `DEFAULT_MODEL` in
+`backend/app/llm.py` before overriding via the `HF_MODEL` env var.
 
 GitHub API access goes through `app/github_client.py`: locally it shells
 out to the `gh` CLI's own stored auth (`gh auth login`), so nothing

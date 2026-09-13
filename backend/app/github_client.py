@@ -24,6 +24,10 @@ from app.errors import GitHubAccessError, GitHubAuthError
 
 GITHUB_API = "https://api.github.com"
 
+# GitHub rejects file reads over this size with a different (non-raw)
+# response shape rather than truncating, so there's no point requesting more.
+MAX_FILE_BYTES = 1_000_000
+
 # `gh` uses this exit code for "not logged in / bad credentials".
 _GH_AUTH_EXIT_CODE = 4
 
@@ -182,3 +186,48 @@ def pr_diff(owner: str, name: str, number: int) -> str:
     except FileNotFoundError:
         return ""
     return result.stdout if result.returncode == 0 else ""
+
+
+def file_contents(owner: str, name: str, path: str) -> str:
+    """Fetch one file's raw text at the repo's default branch HEAD.
+
+    Unlike pr_diff, this raises rather than degrading silently — a missing
+    or unreadable file means there's nothing to show the reader who asked
+    to view it, not a best-effort annotation that can just be thinner.
+    """
+    target = f"{owner}/{name}/{path}"
+    token = _token()
+
+    if token:
+        try:
+            resp = httpx.get(
+                f"{GITHUB_API}/repos/{owner}/{name}/contents/{path}",
+                headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github.raw+json"},
+                timeout=30,
+            )
+        except httpx.RequestError as e:
+            raise GitHubAccessError(
+                f"Couldn't reach GitHub to read {target} ({e.__class__.__name__}). "
+                "Check this server's network access and try again."
+            ) from None
+        _raise_for_token_response(resp, target)
+        return resp.text
+
+    try:
+        result = subprocess.run(
+            ["gh", "api", "-H", "Accept: application/vnd.github.raw+json", f"repos/{owner}/{name}/contents/{path}"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        raise GitHubAuthError(
+            "The `gh` command-line tool isn't installed in this environment. " + _NO_CREDENTIALS_HELP
+        ) from None
+    except subprocess.CalledProcessError as e:
+        if e.returncode == _GH_AUTH_EXIT_CODE:
+            raise GitHubAuthError(
+                "The `gh` command-line tool is installed but not signed in to GitHub. " + _NO_CREDENTIALS_HELP
+            ) from None
+        _raise_for_gh_stderr((e.stderr or "").strip(), e.returncode, target)
+    return result.stdout

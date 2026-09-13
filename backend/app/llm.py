@@ -1,8 +1,16 @@
 """Single abstracted LLM interface: prompt in, text out.
 
-Default backend is Gemini Flash on the free tier (cost constraint: this must
-not cost money to run). Swapping backends later means changing call_llm's
-body, not any caller in parser.py/miner.py.
+Backend is an open-weight instruct model served by Hugging Face's hosted
+Inference Providers (via huggingface_hub.InferenceClient) rather than
+Gemini. The model still runs on someone else's infrastructure, not this
+server and not the end user's device — a 7B-class model is too large to
+run reliably in a browser (multi-GB download, needs WebGPU) and running it
+locally on this server would make every concurrent analysis contend for
+the same CPU/GPU. HF's router picks whichever backing provider currently
+has the model warm.
+
+Swapping backends later means changing call_llm's body, not any caller in
+parser.py/miner.py.
 """
 
 import os
@@ -10,105 +18,100 @@ import time
 from collections.abc import Callable
 from typing import TypeVar
 
-from google import genai
+from huggingface_hub import InferenceClient
 
-from app.errors import LLMConfigError, LLMQuotaError, LLMTransientError, PipelineError
+from app.errors import LLMConfigError, LLMTransientError, PipelineError
 
-_ALLOWED_MODEL_SUBSTRING = "flash"
-DEFAULT_MODEL = "gemini-3.6-flash"
+# Confirmed working on HF's default (auto-selected) serverless Inference
+# Provider routing as of writing — several other reasonable-looking open
+# instruct models (Qwen2.5-7B-Instruct, Mistral-7B-Instruct-v0.3,
+# Phi-3.5-mini-instruct, zephyr-7b-beta) currently 400/404 here because no
+# enabled provider serves them on the free serverless tier, only on paid
+# dedicated endpoints. If this one stops working, check
+# huggingface.co/models?inference_provider=all&pipeline_tag=text-generation
+# for a currently-served alternative before assuming the code is broken.
+# Override via HF_MODEL without a code change.
+DEFAULT_MODEL = os.environ.get("HF_MODEL", "meta-llama/Llama-3.1-8B-Instruct")
 
 T = TypeVar("T")
 
 
-_client_instance: genai.Client | None = None
+_client_instance: InferenceClient | None = None
 
 
-def _client() -> genai.Client:
-    # Must be a held singleton, not a fresh instance per call — a throwaway
-    # genai.Client gets garbage-collected mid-request (its httpx client closes
-    # under it), which surfaces as "Cannot send a request, as the client has
-    # been closed."
+def _client() -> InferenceClient:
+    # Held singleton for the same reason the old Gemini client was: avoid
+    # rebuilding (and the underlying HTTP session churn) on every call.
     global _client_instance
     if _client_instance is None:
-        api_key = os.environ.get("GEMINI_API_KEY")
-        if not api_key:
+        token = os.environ.get("HF_TOKEN")
+        if not token:
             raise LLMConfigError(
-                "No GEMINI_API_KEY is configured on this server, so file summaries and "
-                "PR rationale can't be generated. Add it as a secret (get a free key at "
-                "aistudio.google.com) and restart. The fixture demo works without it."
+                "No HF_TOKEN is configured on this server, so file summaries and PR "
+                "rationale can't be generated. Create a free token at "
+                "huggingface.co/settings/tokens (read access is enough), add it as a "
+                "secret, and restart. The fixture demo works without it."
             )
-        _client_instance = genai.Client(api_key=api_key)
+        _client_instance = InferenceClient(token=token)
     return _client_instance
 
 
 def call_llm(prompt: str, model: str = DEFAULT_MODEL) -> str:
-    """Send one prompt, return the raw text response.
-
-    Pinned to a specific version rather than "gemini-flash-latest": that
-    alias silently resolved to a preview model (gemini-3.8-flash) with a
-    much stricter free-tier quota (20 requests/day, vs. the usual
-    per-minute rate limit) — confirm the current recommended alias at
-    aistudio.google.com before changing this, per the build brief's own
-    warning that Google renames/versions these periodically.
-
-    Guards against ever pointing this at a Pro (billed) model — that's the
-    one thing that turns this tool from free to billed.
-    """
-    if _ALLOWED_MODEL_SUBSTRING not in model.lower():
-        raise LLMConfigError(
-            f"Refusing to call the model {model!r}: only Gemini Flash variants are "
-            "allowed, because a Pro model would make this tool cost money to run."
-        )
+    """Send one prompt, return the raw text response."""
     try:
-        response = _client().models.generate_content(model=model, contents=prompt)
+        response = _client().chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+        )
     except PipelineError:
         raise
     except Exception as e:
         raise _translate_model_error(e, model) from None
-    return response.text
+    return response.choices[0].message.content or ""
 
 
 def _translate_model_error(e: Exception, model: str) -> PipelineError:
-    """Turn a raw google-genai exception into something worth reading.
-
-    The daily-vs-per-minute distinction matters: both arrive as 429s, but one
-    clears in seconds and the other needs to wait for a day boundary, so only
-    the first is worth retrying.
-    """
+    """Turn a raw huggingface_hub exception into something worth reading."""
+    response = getattr(e, "response", None)
+    status_code = getattr(response, "status_code", None)
     text = str(e)
+    lowered = text.lower()
 
-    if "RESOURCE_EXHAUSTED" in text or "429" in text:
-        if "PerDay" in text or "per day" in text.lower():
-            return LLMQuotaError(
-                "This server has used up its free Gemini quota for the day. The free tier "
-                "allows only a small number of requests per day, and analyzing one new "
-                "repository uses several. Repositories analyzed earlier still load "
-                "instantly from the cache; fresh analysis will work again after the quota "
-                "resets (within 24 hours)."
-            )
+    if status_code == 429 or "rate limit" in lowered or "too many requests" in lowered:
         return LLMTransientError(
-            "The AI service is rate-limiting this server (too many requests in a short "
-            "window) and kept doing so after several automatic retries. Try again in a minute."
+            "Hugging Face is rate-limiting this server's requests (too many in a short "
+            "window) and kept doing so after several automatic retries. Try again in a "
+            "minute."
         )
 
-    if "API key not valid" in text or "API_KEY_INVALID" in text or "PERMISSION_DENIED" in text:
+    if status_code == 402 or "exceeded your monthly included credits" in lowered:
         return LLMConfigError(
-            "Google rejected this server's GEMINI_API_KEY. Check that the key is correct "
-            "and still active at aistudio.google.com, then update the secret."
+            "This server's Hugging Face account has used up its included Inference "
+            "Providers credit for the month. Free accounts get a small amount and are "
+            "hard-blocked once it's gone — nothing is billed automatically. Add a payment "
+            "method or upgrade to PRO at huggingface.co/settings/billing to keep going, or "
+            "wait for next month's credits to reset."
         )
 
-    if "NOT_FOUND" in text and "model" in text.lower():
+    if status_code in (401, 403) or "unauthorized" in lowered or "authorization" in lowered:
         return LLMConfigError(
-            f"The Gemini model this server is configured to use ({model}) is no longer "
-            "available. Google retires and renames these periodically — check "
-            "aistudio.google.com for the current Flash model and update DEFAULT_MODEL in "
-            "backend/app/llm.py."
+            "Hugging Face rejected this server's HF_TOKEN. Check that the token is "
+            "correct, still active, and has inference permission at "
+            "huggingface.co/settings/tokens, then update the secret."
         )
 
-    if "503" in text or "UNAVAILABLE" in text:
+    if status_code == 404 or "not found" in lowered:
+        return LLMConfigError(
+            f"The Hugging Face model this server is configured to use ({model}) isn't "
+            "available through Inference Providers right now. Check huggingface.co/models "
+            "for a currently-served alternative and update the HF_MODEL secret."
+        )
+
+    if status_code == 503 or "loading" in lowered or "unavailable" in lowered or "overloaded" in lowered:
         return LLMTransientError(
-            "Google's Gemini service is temporarily overloaded and kept failing after "
-            "several automatic retries. This usually clears on its own — try again shortly."
+            "The Hugging Face-hosted model is warming up or temporarily unavailable and "
+            "kept failing after several automatic retries. This usually clears within a "
+            "minute or two — try again shortly."
         )
 
     short = text.splitlines()[0][:200] if text else "no details given"
@@ -118,10 +121,9 @@ def _translate_model_error(e: Exception, model: str) -> PipelineError:
 def call_with_retry(fn: Callable[[], T], max_retries: int = 5) -> T:
     """Retry-with-backoff wrapper for call_llm invocations.
 
-    Only retries genuinely transient failures. A bad API key, a retired
-    model, or an exhausted daily quota won't fix themselves within a backoff
-    window, so those surface immediately with an explanation instead of
-    burning five attempts first.
+    Only retries genuinely transient failures. A bad token or a retired
+    model won't fix themselves within a backoff window, so those surface
+    immediately with an explanation instead of burning five attempts first.
     """
     for attempt in range(max_retries):
         try:

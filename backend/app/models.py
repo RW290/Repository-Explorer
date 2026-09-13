@@ -34,3 +34,18 @@ class GraphNode(BaseModel):
 class Graph(BaseModel):
     nodes: list[GraphNode]
     annotations: list[Annotation]
+    # None for the phase-1 fixture demo, which isn't backed by a real GitHub
+    # repo — the frontend uses this to decide whether source-viewing and
+    # line rationale are available at all.
+    repo_url: str | None = None
+
+
+class LineRationale(BaseModel):
+    id: str
+    path: str
+    start_line: int
+    end_line: int
+    selected_text: str
+    question: str
+    answer: str
+    created_at: float

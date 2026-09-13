@@ -142,6 +142,18 @@
 .detail-panel__kind { color: #65d8c4; font-family: "DM Mono", monospace; font-size: .6rem; letter-spacing: .1em; text-transform: uppercase; }
 .detail-panel__title { max-width: 280px; margin: 6px 0 13px; color: #f0eff7; font-size: 1.03rem; line-height: 1.35; word-break: break-word; }
 .detail-panel__summary { color: #b3b5c1; font-size: .82rem; line-height: 1.65; }
+.detail-panel__view-source {
+  margin-top: 14px;
+  padding: 8px 13px;
+  border: 1px solid #3a3d70;
+  border-radius: 8px;
+  background: rgba(126,109,255,.1);
+  color: #b6adff;
+  cursor: pointer;
+  font-size: .74rem;
+  font-weight: 600;
+}
+.detail-panel__view-source:hover { border-color: #7166c9; background: rgba(126,109,255,.18); color: #f0eff7; }
 .detail-panel h3 { margin: 25px 0 10px; color: #717587; font-family: "DM Mono", monospace; font-size: .61rem; letter-spacing: .1em; text-transform: uppercase; }
 .detail-panel__deps { margin: 0; padding: 0; color: #c7c9d3; font-family: "DM Mono", monospace; font-size: .68rem; list-style: none; }
 .detail-panel__deps li { padding: 7px 0; border-bottom: 1px solid #22242d; }

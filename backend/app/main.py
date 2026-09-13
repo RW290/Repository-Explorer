@@ -11,17 +11,32 @@ would kill a synchronous call long before it finished.
 """
 
 import os
+import time
+import uuid
 from pathlib import Path
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from app import github_client, rationale_store
 from app.errors import PipelineError
+from app.explain import DEFAULT_QUESTION, explain_selection
 from app.jobs import get_job, start_job
-from app.models import Graph
+from app.models import Graph, LineRationale
 from app.pipeline import load_cached, parse_repo_url, run_pipeline
+
+# Generous cap on what gets sent to the browser for one file — this is about
+# rendering cost in the viewer, not the GitHub API limit (github_client
+# already can't fetch past ~1MB via the raw contents API).
+MAX_FILE_CHARS_FOR_VIEWER = 200_000
+
+# Local dev reads secrets from the repo-root .env; a no-op if the file
+# doesn't exist (a deployed instance gets its secrets injected directly
+# into the process environment instead, e.g. Replit Secrets).
+load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures"
 FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
@@ -48,6 +63,19 @@ class AnalysisStatus(BaseModel):
     stage: str = ""
     graph: Graph | None = None
     error: str | None = None
+
+
+class FileContentResponse(BaseModel):
+    path: str
+    content: str
+    truncated: bool
+
+
+class ExplainRequest(BaseModel):
+    path: str
+    start_line: int
+    end_line: int
+    question: str | None = None
 
 
 @app.get("/health")
@@ -107,18 +135,6 @@ def get_analysis(job_id: str) -> AnalysisStatus:
     if job is None:
         raise HTTPException(status_code=404, detail="No job with that id")
     graph = Graph.model_validate(job.result) if job.result is not None else None
-    return AnalysisStatus(job_id=job.id, status=job.status, stage=job.stage, graph=graph, error=job.error)
-
-
-@app.get("/{frontend_path:path}")
-def serve_frontend_assets(frontend_path: str) -> FileResponse:
-    """Serve Vite assets and fall back to index.html for SPA routes."""
-    requested = (FRONTEND_DIST / frontend_path).resolve()
-    dist_root = FRONTEND_DIST.resolve()
-    if requested.is_relative_to(dist_root) and requested.is_file():
-        return FileResponse(requested)
-
-    index = FRONTEND_DIST / "index.html"
-    if index.is_file():
-        return FileResponse(index)
-    raise HTTPException(status_code=404, detail="Frontend build not found")
+    return AnalysisStatus(
+        job_id=job.id, status=job.status, stage=job.stage, graph=graph, error=job.error
+    )
