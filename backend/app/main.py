@@ -13,6 +13,7 @@ would kill a synchronous call long before it finished.
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -21,6 +22,11 @@ from app.errors import PipelineError
 from app.jobs import get_job, start_job
 from app.models import Graph
 from app.pipeline import load_cached, parse_repo_url, run_pipeline
+
+# Local dev reads secrets from the repo-root .env; a no-op if the file
+# doesn't exist (a deployed instance gets its secrets injected directly
+# into the process environment instead, e.g. Replit Secrets).
+load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures"
 

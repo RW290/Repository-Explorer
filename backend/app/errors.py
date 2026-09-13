@@ -3,7 +3,7 @@
 Every error surfaced to the UI should say three things: what failed, why,
 and what the reader can do about it. Raw exceptions don't — a subprocess
 error dumps an argv array and an exit code at someone who just typed a repo
-URL. So the layers that talk to the outside world (GitHub, Gemini, git)
+URL. So the layers that talk to the outside world (GitHub, Hugging Face, git)
 translate their failures into these instead, and `str(e)` is always a
 sentence meant to be read by a person.
 
@@ -44,12 +44,6 @@ class RepoCloneError(PipelineError):
 
 class LLMConfigError(ConfigurationError):
     """The model backend is missing credentials or pointed at a bad model."""
-
-
-class LLMQuotaError(PipelineError):
-    """Ran out of free-tier model quota — needs hours, not a retry."""
-
-    http_status = 429
 
 
 class LLMTransientError(PipelineError):

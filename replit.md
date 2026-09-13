@@ -12,8 +12,9 @@ The fixture demo works without credentials.
 
 To analyze a real GitHub repository, add **both** secrets in Replit Secrets:
 
-- `GEMINI_API_KEY` — for file summaries and PR rationale (free key at
-  aistudio.google.com).
+- `HF_TOKEN` — for file summaries and PR rationale (free token at
+  huggingface.co/settings/tokens), used to call an open-weight model through
+  Hugging Face's hosted Inference Providers.
 - `GITHUB_TOKEN` — a personal access token with read access to public
   repositories.
 
