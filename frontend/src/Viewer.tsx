@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 import type { Graph, GraphNode } from "./types";
 import { centroid, computeLayout, fitScale } from "./layout";
+import { parseRepoUrl } from "./api";
 import { DetailPanel } from "./DetailPanel";
+import { SourceViewer } from "./SourceViewer";
 import "./Viewer.css";
 
 type Level = "repo" | "folder" | "file";
@@ -35,6 +37,9 @@ export function Viewer({ graph, onBack }: Props) {
   const [level, setLevel] = useState<Level>("repo");
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [viewingSource, setViewingSource] = useState(false);
+
+  const repo = useMemo(() => parseRepoUrl(graph.repo_url), [graph.repo_url]);
 
   const viewportW = typeof window !== "undefined" ? window.innerWidth : 1200;
   const viewportH = typeof window !== "undefined" ? window.innerHeight : 800;
@@ -96,11 +101,13 @@ export function Viewer({ graph, onBack }: Props) {
     setLevel("repo");
     setActiveFolderId(null);
     setSelectedNodeId(null);
+    setViewingSource(false);
   }
 
   function goToFolder() {
     setLevel("folder");
     setSelectedNodeId(activeFolderId);
+    setViewingSource(false);
   }
 
   const selectedNode = selectedNodeId ? byId.get(selectedNodeId) ?? null : null;
@@ -168,7 +175,22 @@ export function Viewer({ graph, onBack }: Props) {
         <DetailPanel
           node={selectedNode}
           annotations={selectedAnnotations}
-          onClose={() => setSelectedNodeId(null)}
+          onClose={() => {
+            setSelectedNodeId(null);
+            setViewingSource(false);
+          }}
+          onViewSource={
+            repo && selectedNode.type === "file" ? () => setViewingSource(true) : undefined
+          }
+        />
+      )}
+
+      {viewingSource && repo && selectedNode && (
+        <SourceViewer
+          owner={repo.owner}
+          name={repo.name}
+          path={selectedNode.id}
+          onClose={() => setViewingSource(false)}
         />
       )}
     </div>

@@ -4,9 +4,10 @@ interface Props {
   node: GraphNode;
   annotations: Annotation[];
   onClose: () => void;
+  onViewSource?: () => void;
 }
 
-export function DetailPanel({ node, annotations, onClose }: Props) {
+export function DetailPanel({ node, annotations, onClose, onViewSource }: Props) {
   const sorted = [...annotations].sort((a, b) => a.date.localeCompare(b.date));
 
   return (
@@ -17,6 +18,11 @@ export function DetailPanel({ node, annotations, onClose }: Props) {
       <div className="detail-panel__kind">{node.type}</div>
       <h2 className="detail-panel__title">{node.id}</h2>
       <p className="detail-panel__summary">{node.summary}</p>
+      {onViewSource && (
+        <button className="detail-panel__view-source" onClick={onViewSource}>
+          View source &amp; ask why <span aria-hidden="true">→</span>
+        </button>
+      )}
 
       <h3>Dependencies</h3>
       {node.dependencies.length === 0 ? (

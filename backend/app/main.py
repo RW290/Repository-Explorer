@@ -11,6 +11,8 @@ would kill a synchronous call long before it finished.
 """
 
 import os
+import time
+import uuid
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -18,10 +20,17 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from app import github_client, rationale_store
 from app.errors import PipelineError
+from app.explain import DEFAULT_QUESTION, explain_selection
 from app.jobs import get_job, start_job
-from app.models import Graph
+from app.models import Graph, LineRationale
 from app.pipeline import load_cached, parse_repo_url, run_pipeline
+
+# Generous cap on what gets sent to the browser for one file — this is about
+# rendering cost in the viewer, not the GitHub API limit (github_client
+# already can't fetch past ~1MB via the raw contents API).
+MAX_FILE_CHARS_FOR_VIEWER = 200_000
 
 # Local dev reads secrets from the repo-root .env; a no-op if the file
 # doesn't exist (a deployed instance gets its secrets injected directly
@@ -52,6 +61,19 @@ class AnalysisStatus(BaseModel):
     stage: str = ""
     graph: Graph | None = None
     error: str | None = None
+
+
+class FileContentResponse(BaseModel):
+    path: str
+    content: str
+    truncated: bool
+
+
+class ExplainRequest(BaseModel):
+    path: str
+    start_line: int
+    end_line: int
+    question: str | None = None
 
 
 @app.get("/health")
@@ -99,3 +121,68 @@ def get_analysis(job_id: str) -> AnalysisStatus:
         raise HTTPException(status_code=404, detail="No job with that id")
     graph = Graph.model_validate(job.result) if job.result is not None else None
     return AnalysisStatus(job_id=job.id, status=job.status, stage=job.stage, graph=graph, error=job.error)
+
+
+@app.get("/api/repos/{owner}/{name}/file", response_model=FileContentResponse)
+def get_file_content(owner: str, name: str, path: str = Query(...)) -> FileContentResponse:
+    """Raw source for the in-viewer code panel. Fetched on demand rather than
+    stored during analysis — most files in a repo are never opened, so
+    caching every file's full text in the analysis cache would mostly be
+    waste."""
+    try:
+        content = github_client.file_contents(owner, name, path)
+    except PipelineError as e:
+        raise HTTPException(status_code=e.http_status, detail=str(e))
+    truncated = len(content) > MAX_FILE_CHARS_FOR_VIEWER
+    return FileContentResponse(path=path, content=content[:MAX_FILE_CHARS_FOR_VIEWER], truncated=truncated)
+
+
+@app.get("/api/repos/{owner}/{name}/rationales", response_model=list[LineRationale])
+def get_rationales(owner: str, name: str, path: str = Query(...)) -> list[dict]:
+    return rationale_store.load_rationales(owner, name, path)
+
+
+@app.post("/api/repos/{owner}/{name}/rationales", response_model=LineRationale)
+def create_rationale(owner: str, name: str, payload: ExplainRequest) -> dict:
+    """Answers one "why is this used?" question about a highlighted range of
+    lines, then persists it — shared for everyone who later opens this same
+    repo, not just the person who asked."""
+    if payload.start_line < 1 or payload.end_line < payload.start_line:
+        raise HTTPException(status_code=400, detail="Invalid line range.")
+
+    try:
+        content = github_client.file_contents(owner, name, payload.path)
+    except PipelineError as e:
+        raise HTTPException(status_code=e.http_status, detail=str(e))
+
+    lines = content.splitlines()
+    if payload.end_line > len(lines):
+        raise HTTPException(
+            status_code=400, detail=f"{payload.path} only has {len(lines)} lines, not {payload.end_line}."
+        )
+
+    file_summary = None
+    cached = load_cached(f"https://github.com/{owner}/{name}")
+    if cached is not None:
+        node = next((n for n in cached["nodes"] if n["id"] == payload.path), None)
+        file_summary = node.get("summary") if node else None
+
+    try:
+        answer = explain_selection(
+            payload.path, content, payload.start_line, payload.end_line, payload.question, file_summary
+        )
+    except PipelineError as e:
+        raise HTTPException(status_code=e.http_status, detail=str(e))
+
+    entry = {
+        "id": str(uuid.uuid4()),
+        "path": payload.path,
+        "start_line": payload.start_line,
+        "end_line": payload.end_line,
+        "selected_text": "\n".join(lines[payload.start_line - 1 : payload.end_line]),
+        "question": payload.question or DEFAULT_QUESTION,
+        "answer": answer,
+        "created_at": time.time(),
+    }
+    rationale_store.add_rationale(owner, name, entry)
+    return entry

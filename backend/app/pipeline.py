@@ -58,6 +58,7 @@ def run_pipeline(repo_url: str, force_refresh: bool = False, on_stage: Callable[
     if on_stage:
         on_stage("merging annotations into graph")
     graph = merge(nodes, extractions)
+    graph["repo_url"] = f"https://github.com/{owner}/{name}"
 
     CACHE_DIR.mkdir(exist_ok=True)
     cache_path.write_text(json.dumps(graph, indent=2))

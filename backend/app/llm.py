@@ -84,6 +84,15 @@ def _translate_model_error(e: Exception, model: str) -> PipelineError:
             "minute."
         )
 
+    if status_code == 402 or "exceeded your monthly included credits" in lowered:
+        return LLMConfigError(
+            "This server's Hugging Face account has used up its included Inference "
+            "Providers credit for the month. Free accounts get a small amount and are "
+            "hard-blocked once it's gone — nothing is billed automatically. Add a payment "
+            "method or upgrade to PRO at huggingface.co/settings/billing to keep going, or "
+            "wait for next month's credits to reset."
+        )
+
     if status_code in (401, 403) or "unauthorized" in lowered or "authorization" in lowered:
         return LLMConfigError(
             "Hugging Face rejected this server's HF_TOKEN. Check that the token is "

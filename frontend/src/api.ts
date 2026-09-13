@@ -1,4 +1,4 @@
-import type { AnalysisStatus, Graph } from "./types";
+import type { AnalysisStatus, FileContent, Graph, LineRationale } from "./types";
 
 // Use same-origin API paths by default so Replit's proxy can route requests to
 // the local backend. A separately deployed backend can still be configured.
@@ -32,4 +32,42 @@ export async function startAnalysis(repoUrl: string, forceRefresh = false): Prom
 
 export async function pollAnalysis(jobId: string): Promise<AnalysisStatus> {
   return asJson(await fetch(`${API_BASE}/api/analyze/${jobId}`));
+}
+
+// Parses "owner/name" out of a GitHub repo URL, mirroring the backend's
+// parse_repo_url. Returns null for anything that isn't a github.com repo URL
+// (e.g. the fixture demo's graph, whose repo_url is null).
+export function parseRepoUrl(repoUrl: string | null): { owner: string; name: string } | null {
+  if (!repoUrl) return null;
+  const match = repoUrl.trim().match(/github\.com[:/]([^/]+)\/([^/.]+?)(?:\.git)?\/?$/);
+  return match ? { owner: match[1], name: match[2] } : null;
+}
+
+export async function fetchFileContent(owner: string, name: string, path: string): Promise<FileContent> {
+  return asJson(
+    await fetch(`${API_BASE}/api/repos/${owner}/${name}/file?path=${encodeURIComponent(path)}`),
+  );
+}
+
+export async function fetchRationales(owner: string, name: string, path: string): Promise<LineRationale[]> {
+  return asJson(
+    await fetch(`${API_BASE}/api/repos/${owner}/${name}/rationales?path=${encodeURIComponent(path)}`),
+  );
+}
+
+export async function askWhy(
+  owner: string,
+  name: string,
+  path: string,
+  startLine: number,
+  endLine: number,
+  question?: string,
+): Promise<LineRationale> {
+  return asJson(
+    await fetch(`${API_BASE}/api/repos/${owner}/${name}/rationales`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path, start_line: startLine, end_line: endLine, question: question || null }),
+    }),
+  );
 }
