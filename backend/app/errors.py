@@ -3,7 +3,7 @@
 Every error surfaced to the UI should say three things: what failed, why,
 and what the reader can do about it. Raw exceptions don't — a subprocess
 error dumps an argv array and an exit code at someone who just typed a repo
-URL. So the layers that talk to the outside world (GitHub, Hugging Face, git)
+URL. So the layers that talk to the outside world (GitHub, Ollama Cloud, git)
 translate their failures into these instead, and `str(e)` is always a
 sentence meant to be read by a person.
 

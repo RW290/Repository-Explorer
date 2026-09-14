@@ -12,9 +12,9 @@ The fixture demo works without credentials.
 
 To analyze a real GitHub repository, add **both** secrets in Replit Secrets:
 
-- `HF_TOKEN` — for file summaries and PR rationale (free token at
-  huggingface.co/settings/tokens), used to call an open-weight model through
-  Hugging Face's hosted Inference Providers.
+- `OLLAMA_API_KEY` — for file summaries and PR rationale (free key at
+  ollama.com/settings/keys, no card required), used to call an open-weight
+  model through Ollama Cloud.
 - `GITHUB_TOKEN` — a personal access token with read access to public
   repositories.
 

@@ -99,18 +99,16 @@ cached); type a different repo URL to run the pipeline fresh, or use the
 
 ## Secrets
 
-`HF_TOKEN` lives in `.env` at the repo root (gitignored, never committed).
-Create/rotate it at
-[huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) —
-read access is enough. File summaries and PR rationale run against an
-open-weight model (`meta-llama/Llama-3.1-8B-Instruct` by default) served
-through Hugging Face's hosted Inference Providers, not a model run on this
-server or in the browser. Not every model listed on HF is actually
-servable this way — several reasonable-looking alternatives (Qwen2.5-7B-
-Instruct, Mistral-7B-Instruct-v0.3, Phi-3.5-mini-instruct) currently fail
-because no enabled provider serves them on the free serverless tier, only
-on paid dedicated endpoints — see the comment above `DEFAULT_MODEL` in
-`backend/app/llm.py` before overriding via the `HF_MODEL` env var.
+`OLLAMA_API_KEY` lives in `.env` at the repo root (gitignored, never
+committed). Create/rotate it at
+[ollama.com/settings/keys](https://ollama.com/settings/keys) — the free
+tier needs no card. File summaries and PR rationale run against an
+open-weight model (`gpt-oss:20b` by default) served through Ollama Cloud,
+Ollama's own hosted GPU service — not a model run on this server or in the
+browser. Free-tier usage is quota'd by GPU-time and resets every few hours
+plus a weekly cap, not a flat monthly credit. Override the model via the
+`OLLAMA_MODEL` env var — see the comment above `DEFAULT_MODEL` in
+`backend/app/llm.py` for the current free-tier model list before changing.
 
 GitHub API access goes through `app/github_client.py`: locally it shells
 out to the `gh` CLI's own stored auth (`gh auth login`), so nothing
