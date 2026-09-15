@@ -65,9 +65,10 @@ export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
   // two from colliding without the overview having to shrink as folders are
   // added.
   const folderBandH = hasOverviewCard ? viewportH * OVERVIEW_BAND_REMAINDER : viewportH;
+  const repoMinScale = viewportW < 700 ? 0.5 : 0.8;
   const repoScale = useMemo(
-    () => fitScale(topFolderPositions, canvasW, folderBandH, 0.6, 1.35),
-    [topFolderPositions, canvasW, folderBandH],
+    () => fitScale(topFolderPositions, canvasW, folderBandH, repoMinScale, 1.35),
+    [topFolderPositions, canvasW, folderBandH, repoMinScale],
   );
 
   const childrenByParent = useMemo(() => {

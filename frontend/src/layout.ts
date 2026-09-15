@@ -6,14 +6,14 @@ export interface Point {
 }
 
 const FOLDER_SPACING_X = 300;
-const FOLDER_SPACING_Y = 300;
+const FOLDER_SPACING_Y = 220;
 const CHILD_SPACING = 220;
 // Top folders lay out as a row beneath the overview hub card, wrapping only
 // once a row gets wide enough to fight for horizontal space. A square-ish
 // grid (ceil(sqrt(n))) would push even three folders onto two rows, and that
 // extra vertical extent forces fitScale to zoom the whole repo view out far
 // enough that the cards become unreadably small.
-const MAX_FOLDER_COLS = 6;
+const MAX_FOLDER_COLS = 3;
 
 /**
  * Places top-level folders in a row (wrapping past MAX_FOLDER_COLS) beneath
