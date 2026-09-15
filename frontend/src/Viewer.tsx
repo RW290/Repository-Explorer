@@ -5,6 +5,7 @@ import { parseRepoUrl } from "./api";
 import { DetailPanel } from "./DetailPanel";
 import { SourceViewer } from "./SourceViewer";
 import { ProjectOverview } from "./ProjectOverview";
+import { ThemeToggle, type Theme } from "./ThemeToggle";
 import "./Viewer.css";
 
 type Level = "repo" | "folder" | "file";
@@ -20,9 +21,11 @@ function truncate(text: string, max: number): string {
 interface Props {
   graph: Graph;
   onBack: () => void;
+  theme: Theme;
+  onToggleTheme: () => void;
 }
 
-export function Viewer({ graph, onBack }: Props) {
+export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
   const positions = useMemo(() => computeLayout(graph.nodes), [graph.nodes]);
   const byId = useMemo(() => {
     const map = new Map<string, GraphNode>();
@@ -175,6 +178,9 @@ export function Viewer({ graph, onBack }: Props) {
             <button className="active">{selectedNode.id.split("/").pop()}</button>
           </>
         )}
+      </div>
+      <div className="viewer__tools">
+        <ThemeToggle theme={theme} onToggle={onToggleTheme} />
       </div>
 
       <div

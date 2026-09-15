@@ -1,7 +1,8 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fetchFixture, pollAnalysis, startAnalysis } from "./api";
 import type { Graph } from "./types";
 import { Spinner } from "./Spinner";
+import { ThemeToggle, type Theme } from "./ThemeToggle";
 import { Viewer } from "./Viewer";
 
 type Status = "idle" | "loading" | "error";
@@ -15,6 +16,14 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [repoUrl, setRepoUrl] = useState("https://github.com/psf/requests");
   const pollTimer = useRef<number | null>(null);
+  const [theme, setTheme] = useState<Theme>(() =>
+    window.localStorage.getItem("repo-explorer-theme") === "dark" ? "dark" : "light",
+  );
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    window.localStorage.setItem("repo-explorer-theme", theme);
+  }, [theme]);
 
   function stopPolling() {
     if (pollTimer.current !== null) {
@@ -87,6 +96,8 @@ export function App() {
           stopPolling();
           setGraph(null);
         }}
+        theme={theme}
+        onToggleTheme={() => setTheme((current) => current === "light" ? "dark" : "light")}
       />
     );
   }
@@ -104,6 +115,10 @@ export function App() {
         </div>
         <span className="brand-name">repo-explorer</span>
         <span className="brand-pill">ARCHITECTURE INTELLIGENCE</span>
+        <ThemeToggle
+          theme={theme}
+          onToggle={() => setTheme((current) => current === "light" ? "dark" : "light")}
+        />
       </header>
 
       <main className="landing__content">
