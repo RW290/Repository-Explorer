@@ -64,28 +64,19 @@ export function computeLayout(nodes: GraphNode[]): Record<string, Point> {
 
 const NODE_W = 160;
 const NODE_H = 130;
-const NODE_HALF_H = NODE_H / 2;
-// The hub card is far taller than a node and grows downward from its anchor
-// only until its max-height; half of that worst case is what has to stay on
-// canvas above the anchor point.
-const HUB_HALF_H = 240;
 
-/**
- * Vertical center of the repo-level composition's bounding box.
- *
- * Not the mean of the anchor points: the hub card extends ~240px above its
- * anchor while a folder card extends ~110px below one, and centering on the
- * mean of anchors ignores that asymmetry and pushes the hub off the top of
- * the canvas.
- */
-export function repoViewCenter(hub: Point | null, folders: Point[]): Point {
-  if (folders.length === 0) return hub ?? { x: 0, y: 0 };
+/** Center of the folder grid's bounding box, which the repo-level camera
+ * frames. The project overview is no longer part of this composition — it's
+ * a screen-space overlay, so its size doesn't depend on how many folders
+ * there are (and the folder count doesn't shrink the prose). */
+export function repoViewCenter(folders: Point[]): Point {
+  if (folders.length === 0) return { x: 0, y: 0 };
   const xs = folders.map((p) => p.x);
   const ys = folders.map((p) => p.y);
-  const top = Math.min(Math.min(...ys) - NODE_HALF_H, hub ? hub.y - HUB_HALF_H : Infinity);
-  const bottom = Math.max(...ys) + NODE_HALF_H;
-  const allXs = hub ? [...xs, hub.x] : xs;
-  return { x: (Math.min(...allXs) + Math.max(...allXs)) / 2, y: (top + bottom) / 2 };
+  return {
+    x: (Math.min(...xs) + Math.max(...xs)) / 2,
+    y: (Math.min(...ys) + Math.max(...ys)) / 2,
+  };
 }
 
 /** Scale that fits a set of world points (plus node size) inside the canvas, so a folder's
@@ -112,14 +103,3 @@ export function fitScale(
   return Math.min(max, Math.max(min, Math.min(scaleX, scaleY)));
 }
 
-const OVERVIEW_GAP = 330;
-
-/** Position for the project-overview hub card: centered above the top-level
- * folder grid, so folders visually read as arranged beneath it. */
-export function overviewPosition(topFolderPositions: Point[]): Point {
-  if (topFolderPositions.length === 0) return { x: 0, y: -OVERVIEW_GAP };
-  const xs = topFolderPositions.map((p) => p.x);
-  const minY = Math.min(...topFolderPositions.map((p) => p.y));
-  const centerX = (Math.min(...xs) + Math.max(...xs)) / 2;
-  return { x: centerX, y: minY - OVERVIEW_GAP };
-}

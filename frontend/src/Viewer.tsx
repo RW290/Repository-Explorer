@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { Graph, GraphNode } from "./types";
-import { computeLayout, fitScale, overviewPosition, repoViewCenter } from "./layout";
+import { computeLayout, fitScale, repoViewCenter } from "./layout";
 import { parseRepoUrl } from "./api";
 import { DetailPanel } from "./DetailPanel";
 import { SourceViewer } from "./SourceViewer";
@@ -11,6 +11,13 @@ import "./Viewer.css";
 type Level = "repo" | "folder" | "file";
 
 const PANEL_WIDTH = 360;
+// Share of the viewport height left to the folder grid once the project
+// overview claims the top of the screen. Mirrors the overview's max-height
+// in Viewer.css — keep the two in step.
+const OVERVIEW_BAND_REMAINDER = 0.36;
+// Where the folder grid's center lands vertically at repo level when the
+// overview is present: low enough to sit clear of the prose above it.
+const FOLDER_BAND_CENTER = 0.79;
 
 function truncate(text: string, max: number): string {
   const firstSentence = text.split(/(?<=[.!?])\s/)[0] ?? text;
@@ -51,28 +58,16 @@ export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
     () => graph.nodes.filter((n) => n.parent === null).map((n) => positions[n.id]),
     [graph.nodes, positions],
   );
-  // The overview hub card sits above the folder grid in world space (see
-  // layout.overviewPosition) so folders visually read as arranged beneath
-  // it, whether or not it's actually rendered here (repoPositions below
-  // only includes it when there's a real overview to show).
-  const overviewPos = useMemo(() => overviewPosition(topFolderPositions), [topFolderPositions]);
-  const repoPositions = useMemo(
-    () => (hasOverviewCard ? [overviewPos, ...topFolderPositions] : topFolderPositions),
-    [hasOverviewCard, overviewPos, topFolderPositions],
-  );
-  const repoCenter = useMemo(
-    () => repoViewCenter(hasOverviewCard ? overviewPos : null, topFolderPositions),
-    [hasOverviewCard, overviewPos, topFolderPositions],
-  );
-  // Fitted rather than fixed at 1: the overview card adds real vertical
-  // extent above the folder grid, and a repo with many top-level folders
-  // needs to zoom out further to keep everything on screen either way.
-  // extraHeight ≈ the hub card's own extent above its anchor point (its
-  // max-height is 460, vs. the flat 130 fitScale assumes per node), so the
-  // top of the card doesn't get clipped off-canvas.
+  const repoCenter = useMemo(() => repoViewCenter(topFolderPositions), [topFolderPositions]);
+  // When there's an overview to show, it owns the upper part of the screen as
+  // a fixed overlay and the folder grid gets the band beneath it. Fitting the
+  // folders to that band (rather than the whole viewport) is what keeps the
+  // two from colliding without the overview having to shrink as folders are
+  // added.
+  const folderBandH = hasOverviewCard ? viewportH * OVERVIEW_BAND_REMAINDER : viewportH;
   const repoScale = useMemo(
-    () => fitScale(repoPositions, canvasW, viewportH, 0.45, 1.15, hasOverviewCard ? 220 : 0),
-    [repoPositions, canvasW, viewportH, hasOverviewCard],
+    () => fitScale(topFolderPositions, canvasW, folderBandH, 0.45, 1.15),
+    [topFolderPositions, canvasW, folderBandH],
   );
 
   const childrenByParent = useMemo(() => {
@@ -118,7 +113,8 @@ export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
   const scale = level === "repo" ? repoScale : level === "folder" ? folderScale : fileScale;
 
   const tx = canvasW / 2 - target.x * scale;
-  const ty = viewportH / 2 - target.y * scale;
+  const focusY = level === "repo" && hasOverviewCard ? viewportH * FOLDER_BAND_CENTER : viewportH / 2;
+  const ty = focusY - target.y * scale;
 
   function isVisible(node: GraphNode): boolean {
     if (level === "repo") return node.parent === null;
@@ -187,23 +183,6 @@ export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
         className="world"
         style={{ transform: `translate(${tx}px, ${ty}px) scale(${scale})` }}
       >
-        {hasOverviewCard && (
-          <ProjectOverview
-            owner={repo!.owner}
-            name={repo!.name}
-            overview={graph.overview}
-            style={{
-              position: "absolute",
-              left: overviewPos.x,
-              top: overviewPos.y,
-              transform: "translate(-50%, -50%)",
-              opacity: level === "repo" ? 1 : 0,
-              pointerEvents: level === "repo" ? "auto" : "none",
-              transition: "opacity 400ms ease",
-            }}
-          />
-        )}
-
         {graph.nodes.map((node) => {
           const pos = positions[node.id];
           if (!pos) return null;
@@ -269,6 +248,10 @@ export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
           path={selectedNode.id}
           onClose={() => setViewingSource(false)}
         />
+      )}
+
+      {hasOverviewCard && level === "repo" && (
+        <ProjectOverview owner={repo!.owner} name={repo!.name} overview={graph.overview} />
       )}
     </div>
   );
