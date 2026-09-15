@@ -9,8 +9,24 @@ interface Props {
   style?: CSSProperties;
 }
 
+function cleanOverview(text: string): string {
+  return text
+    .replace(/```[a-zA-Z0-9_-]*\s*/g, "")
+    .replace(/^\s*#{1,6}\s+/gm, "")
+    .replace(/^\s*(?:[-*+]|\d+[.)])\s+/gm, "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/(^|[\s(])\*([^*]+)\*(?=[\s).,!?:;]|$)/g, "$1$2")
+    .replace(/(^|[\s(])_([^_]+)_(?=[\s).,!?:;]|$)/g, "$1$2")
+    .replace(/[ \t]+\n/g, "\n")
+    .trim();
+}
+
 function splitOverview(text: string): string[] {
-  const blocks = text
+  const cleaned = cleanOverview(text);
+  const blocks = cleaned
     .trim()
     .split(/\n\s*\n|\n/)
     .map((block) => block.trim())
@@ -20,8 +36,8 @@ function splitOverview(text: string): string[] {
 
   // Older cached overviews are usually one 4–6 sentence paragraph. Grouping
   // sentences keeps those results readable without requiring a re-analysis.
-  const sentences = text.match(/[^.!?]+[.!?]+(?:\s|$)/g)?.map((sentence) => sentence.trim()) ?? [];
-  if (sentences.length < 3) return [text.trim()];
+  const sentences = cleaned.match(/[^.!?]+[.!?]+(?:\s|$)/g)?.map((sentence) => sentence.trim()) ?? [];
+  if (sentences.length < 3) return [cleaned];
 
   const groups: string[] = [];
   const groupSize = Math.ceil(sentences.length / 2);

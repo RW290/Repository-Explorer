@@ -14,10 +14,10 @@ const PANEL_WIDTH = 360;
 // Share of the viewport height left to the folder grid once the compact project
 // overview claims the top of the screen. Mirrors the overview's max-height
 // in Viewer.css — keep the two in step.
-const OVERVIEW_BAND_REMAINDER = 0.55;
+const OVERVIEW_BAND_REMAINDER = 0.5;
 // Where the folder grid's center lands vertically at repo level when the
 // overview is present: below the compact overview, with room for the graph.
-const FOLDER_BAND_CENTER = 0.76;
+const FOLDER_BAND_CENTER = 0.78;
 
 function truncate(text: string, max: number): string {
   const firstSentence = text.split(/(?<=[.!?])\s/)[0] ?? text;
