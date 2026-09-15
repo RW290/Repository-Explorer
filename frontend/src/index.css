@@ -385,8 +385,12 @@ html[data-theme="light"] .landing__features strong { color: #374151; }
 html[data-theme="light"] .landing__features small { color: #7d8796; }
 html[data-theme="light"] .landing__footer { color: #9aa2af; }
 html[data-theme="light"] .landing__footer span { color: #7e8795; }
-html[data-theme="light"] .loading-card {
-  background: rgba(255,255,255,.92);
+/* .loading-card is the full-screen scrim and .loading-card__box is the card
+   itself, so the card's surface styling has to land on the box — applied to
+   the scrim it bleaches the whole viewport instead. */
+html[data-theme="light"] .loading-card { background: rgba(226, 231, 240, .72); }
+html[data-theme="light"] .loading-card__box {
+  background: rgba(255,255,255,.96);
   border-color: #d9d2ff;
   box-shadow: 0 16px 50px rgba(44, 62, 92, .16);
 }
