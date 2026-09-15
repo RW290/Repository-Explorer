@@ -1,5 +1,7 @@
 # Running on Replit
 
+Live at [repository-explorer.replit.app](https://repository-explorer.replit.app).
+
 Use the **Start application** workflow. It starts:
 
 - the FastAPI backend on port 8000
