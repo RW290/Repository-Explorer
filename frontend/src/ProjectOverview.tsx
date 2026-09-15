@@ -9,6 +9,28 @@ interface Props {
   style?: CSSProperties;
 }
 
+function splitOverview(text: string): string[] {
+  const blocks = text
+    .trim()
+    .split(/\n\s*\n|\n/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+
+  if (blocks.length > 1) return blocks;
+
+  // Older cached overviews are usually one 4–6 sentence paragraph. Grouping
+  // sentences keeps those results readable without requiring a re-analysis.
+  const sentences = text.match(/[^.!?]+[.!?]+(?:\s|$)/g)?.map((sentence) => sentence.trim()) ?? [];
+  if (sentences.length < 3) return [text.trim()];
+
+  const groups: string[] = [];
+  const groupSize = Math.ceil(sentences.length / 2);
+  for (let index = 0; index < sentences.length; index += groupSize) {
+    groups.push(sentences.slice(index, index + groupSize).join(" "));
+  }
+  return groups;
+}
+
 export function ProjectOverview({ owner, name, overview, style }: Props) {
   const [rationales, setRationales] = useState<ProjectRationale[]>([]);
   const [expanded, setExpanded] = useState(false);
@@ -40,12 +62,17 @@ export function ProjectOverview({ owner, name, overview, style }: Props) {
   }
 
   if (!overview) return null;
+  const overviewParagraphs = splitOverview(overview);
 
   return (
     <div className="overview-card" style={style} onClick={(e) => e.stopPropagation()}>
       <div className="overview-card__kind">Project overview</div>
       <h2 className="overview-card__title">{name}</h2>
-      <p className="overview-card__text">{overview}</p>
+      <div className="overview-card__text">
+        {overviewParagraphs.map((paragraph, index) => (
+          <p key={`${index}-${paragraph.slice(0, 20)}`}>{paragraph}</p>
+        ))}
+      </div>
 
       {rationales.length > 0 && (
         <div className="overview-card__qa">

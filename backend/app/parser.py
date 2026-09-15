@@ -308,7 +308,7 @@ def _overview_prompt(owner: str, name: str, readme: str | None, folder_summaries
 
 {source}
 
-Cover in 4-6 sentences of flowing prose (not a bulleted list):
+Cover in 4-6 sentences across 2-3 short paragraphs (not a bulleted list):
 - What problem this project solves and its core approach
 - The shape of its architecture — major components/layers and how they
   relate — as far as you can infer from what's given
@@ -316,6 +316,8 @@ Cover in 4-6 sentences of flowing prose (not a bulleted list):
   if evident from the source above (e.g. sync vs. async, monolith vs.
   services, a caching or batching strategy) — don't invent one if there's
   no real signal for it.
+
+Keep each paragraph focused on one idea, and leave a blank line between paragraphs.
 """
 
 
