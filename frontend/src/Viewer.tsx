@@ -65,7 +65,7 @@ export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
   // two from colliding without the overview having to shrink as folders are
   // added.
   const folderBandH = hasOverviewCard ? viewportH * OVERVIEW_BAND_REMAINDER : viewportH;
-  const repoMinScale = viewportW < 700 ? 0.5 : 0.8;
+  const repoMinScale = viewportW < 700 ? 0.5 : 1.05;
   const repoScale = useMemo(
     () => fitScale(topFolderPositions, canvasW, folderBandH, repoMinScale, 1.35),
     [topFolderPositions, canvasW, folderBandH, repoMinScale],
@@ -151,6 +151,11 @@ export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
     ? graph.annotations.filter((a) => selectedNode.annotations.includes(a.id))
     : [];
 
+  function nodeCategory(node: GraphNode): "folder" | "python" | "other" {
+    if (node.type === "folder") return "folder";
+    return /\.py$/i.test(node.id) ? "python" : "other";
+  }
+
   return (
     <div className="viewer">
       <div className="breadcrumbs">
@@ -179,6 +184,11 @@ export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
       <div className={`viewer__tools ${selectedNode ? "viewer__tools--panel-open" : ""}`}>
         <ThemeToggle theme={theme} onToggle={onToggleTheme} />
       </div>
+      <div className="viewer__legend" aria-label="Node color legend">
+        <span><i className="viewer__legend-swatch viewer__legend-swatch--folder" />Folders</span>
+        <span><i className="viewer__legend-swatch viewer__legend-swatch--python" />Python files</span>
+        <span><i className="viewer__legend-swatch viewer__legend-swatch--other" />Other files</span>
+      </div>
 
       <div
         className="world"
@@ -193,7 +203,7 @@ export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
           return (
             <div
               key={node.id}
-              className={`node node--${node.type} ${isSelected ? "node--selected" : ""}`}
+              className={`node node--${nodeCategory(node)} ${isSelected ? "node--selected" : ""}`}
               style={{
                 left: pos.x,
                 top: pos.y,

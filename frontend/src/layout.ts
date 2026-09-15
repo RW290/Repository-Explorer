@@ -62,8 +62,8 @@ export function computeLayout(nodes: GraphNode[]): Record<string, Point> {
   return positions;
 }
 
-const NODE_W = 160;
-const NODE_H = 130;
+const NODE_W = 196;
+const NODE_H = 150;
 
 /** Center of the folder grid's bounding box, which the repo-level camera
  * frames. The project overview is no longer part of this composition — it's
