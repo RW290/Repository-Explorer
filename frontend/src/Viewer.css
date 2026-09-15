@@ -15,8 +15,14 @@
   position: absolute;
   top: 18px;
   right: 20px;
-  z-index: 10;
+  /* Above the detail panel (z-index 20), which is anchored to the same
+     corner — otherwise the toggle is buried whenever a node is selected. */
+  z-index: 25;
+  transition: right 300ms ease;
 }
+/* The panel is 360px wide, so slide the toggle clear of it rather than
+   letting them stack. */
+.viewer__tools--panel-open { right: 380px; }
 
 .viewer::after {
   position: absolute;
@@ -300,7 +306,9 @@
 @media (max-width: 620px) {
   .viewer::before { top: 70px; right: 15px; }
   .breadcrumbs { top: 14px; left: 14px; }
-  .viewer__tools { top: 14px; right: 14px; }
+  /* The panel docks to the bottom at this width, so the toggle never needs
+     to slide out of its way — and 380px would push it off a narrow screen. */
+  .viewer__tools, .viewer__tools--panel-open { top: 14px; right: 14px; }
   .detail-panel { width: 100%; height: 54%; top: auto; padding: 21px 18px; border-top: 1px solid #303240; border-left: 0; }
 }
 
@@ -428,3 +436,14 @@ html[data-theme="light"] .overview-card__cancel { background: #eef0f4 !important
 @media (max-width: 620px) {
   html[data-theme="light"] .detail-panel { border-top-color: #e0e4ec; }
 }
+/* Remaining light-theme gaps: the confidence badges and annotation accent
+   borders were tuned for a dark surface, and the error reds go illegible on
+   white. */
+html[data-theme="light"] .annotation--high { border-left-color: #1f9d6b; }
+html[data-theme="light"] .annotation--medium { border-left-color: #c47f1c; }
+html[data-theme="light"] .annotation--low { border-left-color: #c8434a; }
+html[data-theme="light"] .annotation__confidence--high { background: rgba(31, 157, 107, .12); color: #14794f; }
+html[data-theme="light"] .annotation__confidence--medium { background: rgba(196, 127, 28, .14); color: #94600f; }
+html[data-theme="light"] .annotation__confidence--low { background: rgba(200, 67, 74, .12); color: #a32f37; }
+html[data-theme="light"] .file-rationale__error,
+html[data-theme="light"] .overview-card__error { color: #b93b47; }

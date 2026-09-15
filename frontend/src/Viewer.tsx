@@ -179,7 +179,7 @@ export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
           </>
         )}
       </div>
-      <div className="viewer__tools">
+      <div className={`viewer__tools ${selectedNode ? "viewer__tools--panel-open" : ""}`}>
         <ThemeToggle theme={theme} onToggle={onToggleTheme} />
       </div>
 

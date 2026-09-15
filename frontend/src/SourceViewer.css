@@ -214,3 +214,68 @@
   .source-viewer__body { flex-direction: column; }
   .source-viewer__panel { width: auto; border-top: 1px solid #22242d; border-left: 0; }
 }
+
+/* Light theme. Mirrors the palette established in Viewer.css/index.css:
+   #273142 primary text, #687386 secondary, #6551d5 purple accent, #168b7a
+   teal, #e0e4ec borders, white/#f7f8fb surfaces. */
+html[data-theme="light"] .source-viewer__backdrop {
+  background: rgba(229, 232, 240, .66);
+}
+html[data-theme="light"] .source-viewer {
+  border-color: #e0e4ec;
+  background: #fff;
+  box-shadow: 0 30px 80px rgba(44, 62, 92, .18);
+}
+html[data-theme="light"] .source-viewer__header {
+  border-bottom-color: #e8eaf1;
+  background: #f7f8fb;
+}
+html[data-theme="light"] .source-viewer__path { color: #273142; }
+html[data-theme="light"] .source-viewer__close {
+  border-color: #dcd9f0;
+  background: #f0effd;
+  color: #5f6878;
+}
+html[data-theme="light"] .source-viewer__close:hover { border-color: #a99ff0; color: #44349e; }
+
+html[data-theme="light"] .source-viewer__loading { color: #687386; }
+html[data-theme="light"] .source-viewer__error { color: #b93b47; }
+
+html[data-theme="light"] .source-line:hover { background: rgba(71, 85, 105, .05); }
+html[data-theme="light"] .source-line--selected { background: rgba(117, 97, 223, .13); }
+html[data-theme="light"] .source-line__no { color: #9aa3b1; }
+html[data-theme="light"] .source-line__no:hover { color: #5d4ac3; }
+html[data-theme="light"] .source-line--selected .source-line__no { color: #44349e; }
+html[data-theme="light"] .source-line__text { color: #273142; }
+html[data-theme="light"] .source-line__marker { color: #168b7a; }
+
+html[data-theme="light"] .source-viewer__panel {
+  border-left-color: #e8eaf1;
+  background: #f7f8fb;
+  color: #4a5464;
+}
+html[data-theme="light"] .source-viewer__hint p { color: #687386; }
+html[data-theme="light"] .source-viewer__hint h4 { color: #7a8494; }
+html[data-theme="light"] .rationale-list button {
+  border-color: #dcd9f0;
+  background: #f0effd;
+  color: #44349e;
+}
+html[data-theme="light"] .rationale-list button:hover { border-color: #a99ff0; color: #2f2480; }
+
+html[data-theme="light"] .ask-why__label { color: #5d4ac3; }
+html[data-theme="light"] .ask-why__input {
+  border-color: #dcdfe8;
+  background: #fff;
+  color: #273142;
+}
+html[data-theme="light"] .ask-why__cancel { background: #e8eaf1 !important; color: #5f6878 !important; }
+html[data-theme="light"] .ask-why__error { color: #b93b47; }
+
+html[data-theme="light"] .rationale-thread {
+  border-color: rgba(117, 97, 223, .28);
+  background: rgba(117, 97, 223, .08);
+}
+html[data-theme="light"] .rationale-thread__meta { color: #5d4ac3; }
+html[data-theme="light"] .rationale-thread__q { color: #687386; }
+html[data-theme="light"] .rationale-thread__a { color: #273142; }
