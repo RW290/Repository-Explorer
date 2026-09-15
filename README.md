@@ -1,4 +1,4 @@
-# repo-explorer
+# Repository-Explorer
 
 Ingests a GitHub repo and produces an explorable, animated visualization of
 its architecture, annotated with *why* things are the way they are — pulled
