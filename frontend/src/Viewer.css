@@ -260,6 +260,12 @@
   cursor: default;
   scrollbar-width: thin;
   scrollbar-color: rgba(150,140,210,.35) transparent;
+  /* Fade the last line out rather than slicing it mid-sentence at the clip
+     edge. A mask works here where a gradient overlay wouldn't: the canvas
+     behind this is a patterned, theme-dependent background, so there's no
+     single colour to fade into. */
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent);
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent);
 }
 .overview-card::-webkit-scrollbar { width: 7px; }
 .overview-card::-webkit-scrollbar-thumb { border-radius: 4px; background: rgba(150,140,210,.35); }

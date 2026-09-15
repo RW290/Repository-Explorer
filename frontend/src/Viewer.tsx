@@ -65,10 +65,13 @@ export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
   // two from colliding without the overview having to shrink as folders are
   // added.
   const folderBandH = hasOverviewCard ? viewportH * OVERVIEW_BAND_REMAINDER : viewportH;
-  const repoMinScale = viewportW < 700 ? 0.5 : 1.05;
+  // The floor is only there to stop absurd shrinkage, not to hold cards at
+  // full size: a 1.05 floor meant six folders couldn't fit the band on a
+  // 1280x720 screen and the bottom row ran off-canvas. Roomy screens still
+  // land near the 1.35 ceiling on their own.
   const repoScale = useMemo(
-    () => fitScale(topFolderPositions, canvasW, folderBandH, repoMinScale, 1.35),
-    [topFolderPositions, canvasW, folderBandH, repoMinScale],
+    () => fitScale(topFolderPositions, canvasW, folderBandH, 0.5, 1.35),
+    [topFolderPositions, canvasW, folderBandH],
   );
 
   const childrenByParent = useMemo(() => {

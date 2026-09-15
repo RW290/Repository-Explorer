@@ -8,19 +8,17 @@ export interface Point {
 const FOLDER_SPACING_X = 300;
 const FOLDER_SPACING_Y = 220;
 const CHILD_SPACING = 220;
-// Top folders lay out as a row beneath the overview hub card, wrapping only
-// once a row gets wide enough to fight for horizontal space. A square-ish
-// grid (ceil(sqrt(n))) would push even three folders onto two rows, and that
-// extra vertical extent forces fitScale to zoom the whole repo view out far
-// enough that the cards become unreadably small.
+// Top folders lay out in rows of at most this many, beneath the project
+// overview that occupies the top of the screen. A square-ish grid
+// (ceil(sqrt(n))) would spread them wider than the band left over for them.
 const MAX_FOLDER_COLS = 3;
 
 /**
- * Places top-level folders in a row (wrapping past MAX_FOLDER_COLS) beneath
- * the overview hub, then clusters each folder's children tightly around it.
- * Zooming just multiplies these coordinates by the camera scale, so a
- * folder's children spread out from an invisible cluster into a readable
- * grid without a separate per-level layout pass.
+ * Places top-level folders in rows (wrapping past MAX_FOLDER_COLS) in the
+ * band below the project overview, then clusters each folder's children
+ * tightly around it. Zooming just multiplies these coordinates by the camera
+ * scale, so a folder's children spread out from an invisible cluster into a
+ * readable grid without a separate per-level layout pass.
  */
 export function computeLayout(nodes: GraphNode[]): Record<string, Point> {
   const positions: Record<string, Point> = {};
@@ -97,7 +95,10 @@ export function fitScale(
   const ys = points.map((p) => p.y);
   const width = Math.max(...xs) - Math.min(...xs) + NODE_W;
   const height = Math.max(...ys) - Math.min(...ys) + NODE_H + extraHeight;
-  const margin = 100;
+  // Proportional, not a flat 100: the repo level fits folders into a band
+  // that's only ~half the viewport, and a fixed 100px gutter on each side
+  // would eat most of a short screen's band and drive the fit to nonsense.
+  const margin = Math.min(100, canvasH * 0.1, canvasW * 0.1);
   const scaleX = (canvasW - margin * 2) / Math.max(width, 1);
   const scaleY = (canvasH - margin * 2) / Math.max(height, 1);
   return Math.min(max, Math.max(min, Math.min(scaleX, scaleY)));
