@@ -43,10 +43,16 @@ heavy PR discipline) and
   data. The landing screen lets you type a repo URL; results are cached to
   `backend/.cache/` (gitignored) since a fresh run costs real LLM/API calls.
 
-All LLM-written text (file summaries and PR rationale) is prompted to read
-as plain language for a non-technical reader — no unexplained jargon, terms
-briefly explained inline when unavoidable — without softening or changing
-the underlying facts.
+All LLM-written text (file summaries, PR rationale, project overview, and
+all three "ask why" variants) shares one framing (`app/audience.py`): the
+reader is a software engineer using this to learn good coding practice and
+system design, so answers should ground the *design rationale* behind a
+choice — tradeoffs, patterns, and QoS implications like latency/scalability/
+coupling where genuinely relevant — not just describe what code does, and
+not soften or change the underlying facts to be more approachable. File
+summaries and the "why does this file exist?" answers are additionally
+grounded in the file's actual dependency edges (what it imports, what
+imports it), not just its own content in isolation.
 
 Spot-checked a sample of annotations from both repos by hand against the
 actual PRs (e.g. `requests`' CVE-2024-47081 fix and v2.32.5 SSLContext

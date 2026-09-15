@@ -51,6 +51,21 @@ Keep `rationale_stated` and `rationale_inferred` as separate fields, never merge
 
 ## LLM backend
 
+> **Update, post-v1:** the Gemini Flash plan below shipped as designed, then
+> was replaced twice — first with Hugging Face's hosted Inference Providers
+> (`meta-llama/Llama-3.1-8B-Instruct`), then with Ollama Cloud
+> (`gpt-oss:20b`), each time behind the same `call_llm(prompt) -> str`
+> interface this section specifies, so neither swap touched parser/miner
+> logic. Each move was forced by the same constraint that shaped the
+> original choice — cost/quota, not quality: Gemini's free tier turned out
+> to cap at ~20 requests/*day* (much stricter than advertised, discovered
+> mid-build); Hugging Face's free credit is a flat ~$0.10/month; Ollama
+> Cloud's quota is GPU-time-based and resets every few hours plus a weekly
+> cap, which is the most forgiving of the three for this app's sporadic
+> traffic. See `backend/app/llm.py` and the README's Secrets/Deployment
+> sections for the current state — the code below is what v1 actually
+> looked like, kept as the decision record.
+
 The architecture parser needs no model — dependency graph extraction is static analysis. The file summaries and rationale extraction do need one.
 
 **Cost constraint: this must not cost money to run.** That rules out paid closed-model APIs (Claude/GPT) as the default.
@@ -102,6 +117,8 @@ def call_with_retry(fn, max_retries=5):
 ```
 
 **Fallback if free-tier limits become a blocker:** fully local (Ollama, quantized 7-8B model) — zero external dependency, no rate limits, but a real quality drop on the stated-vs-inferred rationale distinction at that size. Not the default; only reach for this if Gemini's free tier proves too restrictive in practice.
+
+*(This fallback's instinct was right, its shape wasn't: Ollama did end up being the answer, but as Ollama **Cloud** — hosted GPU inference, not fully local — once "fully local" ran into the same constraint the rest of this section exists to avoid: it means running on this server's or the end user's own hardware, which was later ruled out for the deployed app. See the update note above.)*
 
 Leave the paid closed-model path in the abstraction but don't build the default flow against it.
 

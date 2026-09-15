@@ -6,6 +6,7 @@ these fires one call per question asked while browsing — interactive, not
 part of the pipeline.
 """
 
+from app.audience import AUDIENCE_FRAMING
 from app.llm import call_llm, call_with_retry
 
 CONTEXT_LINES = 15
@@ -22,18 +23,19 @@ def _extract_context(file_content: str, start_line: int, end_line: int) -> str:
     return "\n".join(f"{i + 1}: {lines[i]}" for i in range(lo, hi))
 
 
-def _prompt(path: str, selected_text: str, context: str, question: str, file_summary: str | None) -> str:
-    summary_line = f'This file\'s overall role: "{file_summary}"\n\n' if file_summary else ""
-    return f"""A curious reader who has never seen this codebase and isn't a programmer
-highlighted a specific piece of code inside one file and asked a question about it.
-Answer about that highlighted part specifically, not the whole file.
+def _prompt(
+    path: str, selected_text: str, context: str, question: str, file_summary: str | None, dependencies: list[str] | None
+) -> str:
+    summary_line = f'This file\'s overall role: "{file_summary}"\n' if file_summary else ""
+    deps_line = f"This file depends on: {', '.join(dependencies)}\n" if dependencies else ""
+    return f"""A reader highlighted a specific piece of code inside one file and asked a
+question about it. Answer about that highlighted part specifically, not the
+whole file.
 
-Write in plain, everyday language, like explaining it to a friend. Avoid unexplained
-jargon (e.g. "API", "middleware", "async"); if a technical term is essential, briefly
-explain it in plain words right next to it.
+{AUDIENCE_FRAMING}
 
 File: {path}
-{summary_line}Surrounding code, with line numbers, for context:
+{summary_line}{deps_line}Surrounding code, with line numbers, for context:
 ```
 {context}
 ```
@@ -45,7 +47,7 @@ The reader highlighted exactly these lines:
 
 Their question: {question}
 
-Answer in 2-4 plain-language sentences.
+Answer in 2-4 sentences.
 """
 
 
@@ -56,11 +58,12 @@ def explain_selection(
     end_line: int,
     question: str | None = None,
     file_summary: str | None = None,
+    dependencies: list[str] | None = None,
 ) -> str:
     lines = file_content.splitlines()
     selected_text = "\n".join(lines[start_line - 1 : end_line])[:MAX_SELECTION_CHARS]
     context = _extract_context(file_content, start_line, end_line)
-    prompt = _prompt(path, selected_text, context, question or DEFAULT_QUESTION, file_summary)
+    prompt = _prompt(path, selected_text, context, question or DEFAULT_QUESTION, file_summary, dependencies)
     return call_with_retry(lambda: call_llm(prompt)).strip()
 
 
@@ -69,22 +72,21 @@ def _file_prompt(path: str, file_summary: str, dependencies: list[str], dependen
     dependents_line = (
         f"Files that depend on it: {', '.join(dependents)}\n" if dependents else "Files that depend on it: none recorded.\n"
     )
-    return f"""A curious reader who has never seen this codebase and isn't a programmer
-is asking why one specific file exists and whether it's actually necessary, in the
-context of the wider project it's part of.
+    return f"""A reader is asking why one specific file exists and whether it's actually
+necessary, in the context of the wider project it's part of.
 
-Write in plain, everyday language, like explaining it to a friend. Avoid unexplained
-jargon (e.g. "API", "middleware", "async"); if a technical term is essential, briefly
-explain it in plain words right next to it.
+{AUDIENCE_FRAMING}
 
 File: {path}
 This file's role: "{file_summary}"
 {deps_line}{dependents_line}
 Their question: {question}
 
-Answer in 2-4 plain-language sentences, focused on why this file's existence makes
-sense given what it connects to elsewhere in the project — not just what it does in
-isolation.
+Answer in 2-4 sentences, focused on why this file's existence and scope make
+sense given what it depends on and what depends on it — a genuine
+separation-of-concerns argument, not just what it does in isolation. If the
+dependency/dependent lists are too thin to support that argument, say so
+rather than inventing a rationale from nothing.
 """
 
 
@@ -100,18 +102,16 @@ def explain_file(
 
 
 def _project_prompt(owner: str, name: str, overview: str, question: str) -> str:
-    return f"""A curious reader who has never seen this codebase and isn't a programmer is
-asking a follow-up question about the GitHub project "{owner}/{name}", having already
-read this brief overview of it:
+    return f"""A reader is asking a follow-up question about the GitHub project
+"{owner}/{name}", having already read this brief overview of it:
 
 "{overview}"
 
-Write in plain, everyday language, like explaining it to a friend. Avoid unexplained
-jargon; briefly explain any essential technical term right where it's used.
+{AUDIENCE_FRAMING}
 
 Their question: {question}
 
-Answer in 2-4 plain-language sentences.
+Answer in 2-4 sentences.
 """
 
 

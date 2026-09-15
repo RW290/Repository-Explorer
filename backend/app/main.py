@@ -195,14 +195,22 @@ def create_rationale(owner: str, name: str, payload: ExplainRequest) -> dict:
         )
 
     file_summary = None
+    file_dependencies = None
     cached = load_cached(f"https://github.com/{owner}/{name}")
     if cached is not None:
         node = next((n for n in cached["nodes"] if n["id"] == payload.path), None)
         file_summary = node.get("summary") if node else None
+        file_dependencies = node.get("dependencies") if node else None
 
     try:
         answer = explain_selection(
-            payload.path, content, payload.start_line, payload.end_line, payload.question, file_summary
+            payload.path,
+            content,
+            payload.start_line,
+            payload.end_line,
+            payload.question,
+            file_summary,
+            file_dependencies,
         )
     except PipelineError as e:
         raise HTTPException(status_code=e.http_status, detail=str(e))

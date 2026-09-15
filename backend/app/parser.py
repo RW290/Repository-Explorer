@@ -15,6 +15,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from app.audience import AUDIENCE_FRAMING
 from app.errors import ConfigurationError, PipelineError, RepoCloneError
 from app.llm import call_llm, call_with_retry
 
@@ -221,19 +222,21 @@ def build_nodes(repo_root: Path, files: list[Path], dependencies: dict[str, list
     return folder_nodes + nodes
 
 
-def _summary_prompt(batch: list[tuple[str, str]]) -> str:
+def _summary_prompt(batch: list[tuple[str, str, list[str]]]) -> str:
     files_text = "\n\n".join(
-        f"### {path}\n```\n{content[:MAX_FILE_CHARS_FOR_SUMMARY]}\n```" for path, content in batch
+        f"### {path}\n"
+        + (f"Depends on (imports): {', '.join(deps)}\n" if deps else "")
+        + f"```\n{content[:MAX_FILE_CHARS_FOR_SUMMARY]}\n```"
+        for path, content, deps in batch
     )
     return f"""For each file below, write a one-paragraph summary of its role in the codebase.
 
-Write for someone who has never seen this codebase and isn't a programmer —
-a curious non-technical reader. Explain what the file is FOR in plain,
-everyday language, as if describing it to a friend. Avoid unexplained
-jargon: don't assume the reader knows terms like "API", "WebSocket",
-"middleware", "ORM", "async", or similar. If a technical term is
-unavoidable, briefly explain what it means in plain words right there in
-the sentence. Prefer concrete, everyday analogies over technical precision.
+{AUDIENCE_FRAMING}
+
+Where a file's dependencies are listed, use them to ground *why* this file
+is scoped the way it is — what responsibility it holds itself versus what
+it delegates to the files it depends on. That's more valuable than a plain
+restatement of the code.
 
 Return ONLY a JSON array of objects with "path" and "summary" fields, no other text.
 
@@ -243,20 +246,19 @@ Files:
 
 
 def summarize_files(
-    repo_root: Path, files: list[Path], on_stage: Callable[[str], None] | None = None
+    repo_root: Path, nodes: list[ParsedNode], on_stage: Callable[[str], None] | None = None
 ) -> dict[str, str]:
     import json
     import time
 
     summaries: dict[str, str] = {}
     contents = []
-    for f in files:
-        rel = str(f.relative_to(repo_root))
+    for n in nodes:
         try:
-            text = f.read_text(encoding="utf-8", errors="ignore")
+            text = (repo_root / n.id).read_text(encoding="utf-8", errors="ignore")
         except OSError:
             text = ""
-        contents.append((rel, text))
+        contents.append((n.id, text, n.dependencies))
 
     batch_count = -(-len(contents) // SUMMARY_BATCH_SIZE) if contents else 0
     for i in range(0, len(contents), SUMMARY_BATCH_SIZE):
@@ -273,7 +275,7 @@ def summarize_files(
             for item in results:
                 summaries[item["path"]] = item["summary"]
         except (json.JSONDecodeError, KeyError, TypeError):
-            for path, _ in batch:
+            for path, _, _ in batch:
                 summaries.setdefault(path, "Summary unavailable (LLM response could not be parsed).")
     return summaries
 
@@ -300,18 +302,20 @@ def _overview_prompt(owner: str, name: str, readme: str | None, folder_summaries
         source = f"Its README:\n```\n{readme[:MAX_README_CHARS_FOR_OVERVIEW]}\n```"
     else:
         source = "It has no README. Here's what its top-level folders contain:\n" + "\n".join(folder_summaries)
-    return f"""Write a brief orientation to the GitHub project "{owner}/{name}" for a
-curious reader who has never seen this codebase and isn't a programmer.
+    return f"""Write a brief technical orientation to the GitHub project "{owner}/{name}".
+
+{AUDIENCE_FRAMING}
 
 {source}
 
-In plain, everyday language (avoid unexplained jargon; briefly explain any
-essential technical term right where it's used), cover in 3-5 sentences total:
-- What this project is / what problem it solves
-- What it actually does, broadly
-- How it broadly works (the shape of it, not implementation detail)
-
-Write it as flowing prose, not a bulleted list.
+Cover in 4-6 sentences of flowing prose (not a bulleted list):
+- What problem this project solves and its core approach
+- The shape of its architecture — major components/layers and how they
+  relate — as far as you can infer from what's given
+- Any design choices worth flagging as deliberate engineering tradeoffs,
+  if evident from the source above (e.g. sync vs. async, monolith vs.
+  services, a caching or batching strategy) — don't invent one if there's
+  no real signal for it.
 """
 
 
@@ -339,7 +343,7 @@ def run_parser(
     nodes = build_nodes(repo_root, files, dependencies)
 
     file_nodes = [n for n in nodes if n.type == "file"]
-    summaries = summarize_files(repo_root, [repo_root / n.id for n in file_nodes], on_stage=on_stage)
+    summaries = summarize_files(repo_root, file_nodes, on_stage=on_stage)
     for n in file_nodes:
         n.summary = summaries.get(n.id, "")
 
