@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { Graph, GraphNode } from "./types";
-import { centroid, computeLayout, fitScale } from "./layout";
+import { computeLayout, fitScale, overviewPosition, repoViewCenter } from "./layout";
 import { parseRepoUrl } from "./api";
 import { DetailPanel } from "./DetailPanel";
 import { SourceViewer } from "./SourceViewer";
@@ -30,23 +30,58 @@ export function Viewer({ graph, onBack }: Props) {
     return map;
   }, [graph.nodes]);
 
-  const repoCenter = useMemo(
-    () => centroid(graph.nodes.filter((n) => n.parent === null).map((n) => positions[n.id])),
-    [graph.nodes, positions],
-  );
-
   const [level, setLevel] = useState<Level>("repo");
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [viewingSource, setViewingSource] = useState(false);
 
   const repo = useMemo(() => parseRepoUrl(graph.repo_url), [graph.repo_url]);
+  const hasOverviewCard = Boolean(repo && graph.overview);
 
   const viewportW = typeof window !== "undefined" ? window.innerWidth : 1200;
   const viewportH = typeof window !== "undefined" ? window.innerHeight : 800;
   // The detail panel opens as soon as we leave repo level (folder/file clicks both select),
   // so frame against the panel-open canvas width for both zoomed levels.
   const canvasW = level === "repo" ? viewportW : viewportW - PANEL_WIDTH;
+
+  const topFolderPositions = useMemo(
+    () => graph.nodes.filter((n) => n.parent === null).map((n) => positions[n.id]),
+    [graph.nodes, positions],
+  );
+  // The overview hub card sits above the folder grid in world space (see
+  // layout.overviewPosition) so folders visually read as arranged beneath
+  // it, whether or not it's actually rendered here (repoPositions below
+  // only includes it when there's a real overview to show).
+  const overviewPos = useMemo(() => overviewPosition(topFolderPositions), [topFolderPositions]);
+  const repoPositions = useMemo(
+    () => (hasOverviewCard ? [overviewPos, ...topFolderPositions] : topFolderPositions),
+    [hasOverviewCard, overviewPos, topFolderPositions],
+  );
+  const repoCenter = useMemo(
+    () => repoViewCenter(hasOverviewCard ? overviewPos : null, topFolderPositions),
+    [hasOverviewCard, overviewPos, topFolderPositions],
+  );
+  // Fitted rather than fixed at 1: the overview card adds real vertical
+  // extent above the folder grid, and a repo with many top-level folders
+  // needs to zoom out further to keep everything on screen either way.
+  // extraHeight ≈ the hub card's own extent above its anchor point (its
+  // max-height is 460, vs. the flat 130 fitScale assumes per node), so the
+  // top of the card doesn't get clipped off-canvas.
+  const repoScale = useMemo(
+    () => fitScale(repoPositions, canvasW, viewportH, 0.45, 1.15, hasOverviewCard ? 220 : 0),
+    [repoPositions, canvasW, viewportH, hasOverviewCard],
+  );
+
+  const childrenByParent = useMemo(() => {
+    const map = new Map<string, GraphNode[]>();
+    graph.nodes.forEach((n) => {
+      if (!n.parent) return;
+      const siblings = map.get(n.parent) ?? [];
+      siblings.push(n);
+      map.set(n.parent, siblings);
+    });
+    return map;
+  }, [graph.nodes]);
 
   const siblingPositions = useMemo(
     () =>
@@ -77,7 +112,7 @@ export function Viewer({ graph, onBack }: Props) {
       : level === "folder"
         ? positions[activeFolderId!]
         : positions[selectedNodeId!];
-  const scale = level === "repo" ? 1 : level === "folder" ? folderScale : fileScale;
+  const scale = level === "repo" ? repoScale : level === "folder" ? folderScale : fileScale;
 
   const tx = canvasW / 2 - target.x * scale;
   const ty = viewportH / 2 - target.y * scale;
@@ -146,11 +181,29 @@ export function Viewer({ graph, onBack }: Props) {
         className="world"
         style={{ transform: `translate(${tx}px, ${ty}px) scale(${scale})` }}
       >
+        {hasOverviewCard && (
+          <ProjectOverview
+            owner={repo!.owner}
+            name={repo!.name}
+            overview={graph.overview}
+            style={{
+              position: "absolute",
+              left: overviewPos.x,
+              top: overviewPos.y,
+              transform: "translate(-50%, -50%)",
+              opacity: level === "repo" ? 1 : 0,
+              pointerEvents: level === "repo" ? "auto" : "none",
+              transition: "opacity 400ms ease",
+            }}
+          />
+        )}
+
         {graph.nodes.map((node) => {
           const pos = positions[node.id];
           if (!pos) return null;
           const visible = isVisible(node);
           const isSelected = node.id === selectedNodeId;
+          const preview = level === "repo" && node.type === "folder" ? childrenByParent.get(node.id) ?? [] : null;
           return (
             <div
               key={node.id}
@@ -166,6 +219,18 @@ export function Viewer({ graph, onBack }: Props) {
               <div className="node__name">{node.id.split("/").pop()}</div>
               {level !== "repo" && node.type === "file" && (
                 <div className="node__summary">{truncate(node.summary, 70)}</div>
+              )}
+              {preview && preview.length > 0 && (
+                <div className="node__preview" aria-hidden="true">
+                  {preview.slice(0, 4).map((child) => (
+                    <span key={child.id} className="node__preview-chip">
+                      {child.id.split("/").pop()}
+                    </span>
+                  ))}
+                  {preview.length > 4 && (
+                    <span className="node__preview-chip node__preview-chip--more">+{preview.length - 4} more</span>
+                  )}
+                </div>
               )}
             </div>
           );
@@ -198,10 +263,6 @@ export function Viewer({ graph, onBack }: Props) {
           path={selectedNode.id}
           onClose={() => setViewingSource(false)}
         />
-      )}
-
-      {level === "repo" && repo && graph.overview && (
-        <ProjectOverview owner={repo.owner} name={repo.name} overview={graph.overview} />
       )}
     </div>
   );

@@ -108,7 +108,7 @@ export function SourceViewer({ owner, name, path, onClose }: Props) {
 
         {loading && (
           <div className="source-viewer__loading">
-            <Spinner label="Loading file…" />
+            <Spinner size="lg" label="Loading file…" />
           </div>
         )}
         {loadError && <div className="source-viewer__error">{loadError}</div>}

@@ -1,6 +1,6 @@
 interface Props {
   label?: string;
-  size?: "sm" | "md";
+  size?: "sm" | "md" | "lg";
 }
 
 export function Spinner({ label, size = "md" }: Props) {

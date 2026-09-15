@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { askAboutProject, fetchProjectRationales } from "./api";
 import type { ProjectRationale } from "./types";
 
@@ -6,9 +6,10 @@ interface Props {
   owner: string;
   name: string;
   overview: string;
+  style?: CSSProperties;
 }
 
-export function ProjectOverview({ owner, name, overview }: Props) {
+export function ProjectOverview({ owner, name, overview, style }: Props) {
   const [rationales, setRationales] = useState<ProjectRationale[]>([]);
   const [expanded, setExpanded] = useState(false);
   const [question, setQuestion] = useState("");
@@ -41,41 +42,42 @@ export function ProjectOverview({ owner, name, overview }: Props) {
   if (!overview) return null;
 
   return (
-    <div className="project-overview">
-      <div className="project-overview__kind">Project overview</div>
-      <p className="project-overview__text">{overview}</p>
+    <div className="overview-card" style={style} onClick={(e) => e.stopPropagation()}>
+      <div className="overview-card__kind">Project overview</div>
+      <h2 className="overview-card__title">{name}</h2>
+      <p className="overview-card__text">{overview}</p>
 
       {rationales.length > 0 && (
-        <div className="project-overview__qa">
+        <div className="overview-card__qa">
           {rationales.map((r) => (
-            <div key={r.id} className="project-overview__entry">
-              <p className="project-overview__q">{r.question}</p>
-              <p className="project-overview__a">{r.answer}</p>
+            <div key={r.id} className="overview-card__entry">
+              <p className="overview-card__q">{r.question}</p>
+              <p className="overview-card__a">{r.answer}</p>
             </div>
           ))}
         </div>
       )}
 
       {expanded ? (
-        <div className="project-overview__ask">
+        <div className="overview-card__ask">
           <textarea
-            className="project-overview__input"
+            className="overview-card__input"
             placeholder="Ask a follow-up question about this project…"
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
           />
-          <div className="project-overview__actions">
+          <div className="overview-card__actions">
             <button onClick={submit} disabled={asking}>
               {asking ? "Asking…" : "Ask"}
             </button>
-            <button className="project-overview__cancel" onClick={() => setExpanded(false)} disabled={asking}>
+            <button className="overview-card__cancel" onClick={() => setExpanded(false)} disabled={asking}>
               Cancel
             </button>
           </div>
-          {error && <p className="project-overview__error">{error}</p>}
+          {error && <p className="overview-card__error">{error}</p>}
         </div>
       ) : (
-        <button className="project-overview__toggle" onClick={() => setExpanded(true)}>
+        <button className="overview-card__toggle" onClick={() => setExpanded(true)}>
           Ask a follow-up question <span aria-hidden="true">→</span>
         </button>
       )}

@@ -150,8 +150,10 @@ export function App() {
 
       {status === "loading" && (
         <div className="loading-card" aria-live="polite">
-          <Spinner label={stage || "Preparing your repository…"} />
-          <p className="loading-card__subtext">This can take a few minutes for a new repo.</p>
+          <div className="loading-card__box">
+            <Spinner size="lg" label={stage || "Preparing your repository…"} />
+            <p className="loading-card__subtext">This can take a few minutes for a new repo.</p>
+          </div>
         </div>
       )}
       {status === "error" && (

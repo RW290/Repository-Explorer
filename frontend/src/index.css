@@ -237,15 +237,23 @@ button { -webkit-tap-highlight-color: transparent; }
 
 .loading-card {
   position: fixed;
-  right: 24px;
-  bottom: 24px;
-  z-index: 5;
-  min-width: 270px;
-  padding: 16px 18px;
-  border: 1px solid #363052;
-  border-radius: 12px;
-  background: rgba(23, 21, 39, .95);
-  box-shadow: 0 16px 50px rgba(0,0,0,.35);
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(5, 6, 9, .6);
+  backdrop-filter: blur(4px);
+}
+.loading-card__box {
+  min-width: 300px;
+  max-width: 90vw;
+  padding: 26px 30px;
+  border: 1px solid #3a3364;
+  border-radius: 16px;
+  background: rgba(26, 23, 45, .97);
+  box-shadow: 0 24px 70px rgba(0,0,0,.45), 0 0 0 1px rgba(126,109,255,.1);
+  text-align: center;
 }
 .spinner { display: inline-flex; align-items: center; gap: 10px; color: #e5e1ff; font-size: .78rem; }
 .spinner__ring {
@@ -259,7 +267,9 @@ button { -webkit-tap-highlight-color: transparent; }
 }
 .spinner--sm { gap: 0; }
 .spinner--sm .spinner__ring { width: 14px; height: 14px; border-width: 2px; }
-.loading-card__subtext { margin: 8px 0 0 27px; color: #77758d; font-size: .66rem; }
+.spinner--lg { flex-direction: column; gap: 14px; font-size: .92rem; }
+.spinner--lg .spinner__ring { width: 34px; height: 34px; border-width: 3px; }
+.loading-card__subtext { margin: 10px 0 0; color: #8f8ca3; font-size: .74rem; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .landing__status {
@@ -306,5 +316,5 @@ button { -webkit-tap-highlight-color: transparent; }
   .landing__button { min-height: 48px; }
   .landing__features { grid-template-columns: 1fr; gap: 0; margin-top: 35px; }
   .landing__features > div { padding: 11px 2px; }
-  .loading-card { right: 16px; bottom: 16px; left: 16px; min-width: 0; }
+  .loading-card__box { min-width: 0; padding: 22px 20px; }
 }

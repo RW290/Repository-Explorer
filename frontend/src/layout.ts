@@ -5,24 +5,36 @@ export interface Point {
   y: number;
 }
 
-const FOLDER_SPACING = 420;
+const FOLDER_SPACING_X = 300;
+const FOLDER_SPACING_Y = 300;
 const CHILD_SPACING = 220;
+// Top folders lay out as a row beneath the overview hub card, wrapping only
+// once a row gets wide enough to fight for horizontal space. A square-ish
+// grid (ceil(sqrt(n))) would push even three folders onto two rows, and that
+// extra vertical extent forces fitScale to zoom the whole repo view out far
+// enough that the cards become unreadably small.
+const MAX_FOLDER_COLS = 5;
 
 /**
- * Places top-level folders on a coarse grid, then clusters each folder's
- * children tightly around it. Zooming just multiplies these coordinates by
- * the camera scale, so a folder's children spread out from an invisible
- * cluster into a readable grid without a separate per-level layout pass.
+ * Places top-level folders in a row (wrapping past MAX_FOLDER_COLS) beneath
+ * the overview hub, then clusters each folder's children tightly around it.
+ * Zooming just multiplies these coordinates by the camera scale, so a
+ * folder's children spread out from an invisible cluster into a readable
+ * grid without a separate per-level layout pass.
  */
 export function computeLayout(nodes: GraphNode[]): Record<string, Point> {
   const positions: Record<string, Point> = {};
 
   const topFolders = nodes.filter((n) => n.parent === null);
-  const cols = Math.max(1, Math.ceil(Math.sqrt(topFolders.length)));
+  const cols = Math.min(MAX_FOLDER_COLS, Math.max(1, topFolders.length));
   topFolders.forEach((folder, i) => {
     const col = i % cols;
     const row = Math.floor(i / cols);
-    positions[folder.id] = { x: col * FOLDER_SPACING, y: row * FOLDER_SPACING };
+    // Center each row horizontally so a partly-filled last row doesn't hang
+    // off to one side under the hub card.
+    const rowCount = Math.min(cols, topFolders.length - row * cols);
+    const offset = (cols - rowCount) / 2;
+    positions[folder.id] = { x: (col + offset) * FOLDER_SPACING_X, y: row * FOLDER_SPACING_Y };
   });
 
   const byParent: Record<string, GraphNode[]> = {};
@@ -50,25 +62,64 @@ export function computeLayout(nodes: GraphNode[]): Record<string, Point> {
   return positions;
 }
 
-export function centroid(points: Point[]): Point {
-  if (points.length === 0) return { x: 0, y: 0 };
-  const sum = points.reduce((acc, p) => ({ x: acc.x + p.x, y: acc.y + p.y }), { x: 0, y: 0 });
-  return { x: sum.x / points.length, y: sum.y / points.length };
-}
-
 const NODE_W = 160;
 const NODE_H = 130;
+const NODE_HALF_H = NODE_H / 2;
+// The hub card is far taller than a node and grows downward from its anchor
+// only until its max-height; half of that worst case is what has to stay on
+// canvas above the anchor point.
+const HUB_HALF_H = 240;
+
+/**
+ * Vertical center of the repo-level composition's bounding box.
+ *
+ * Not the mean of the anchor points: the hub card extends ~240px above its
+ * anchor while a folder card extends ~110px below one, and centering on the
+ * mean of anchors ignores that asymmetry and pushes the hub off the top of
+ * the canvas.
+ */
+export function repoViewCenter(hub: Point | null, folders: Point[]): Point {
+  if (folders.length === 0) return hub ?? { x: 0, y: 0 };
+  const xs = folders.map((p) => p.x);
+  const ys = folders.map((p) => p.y);
+  const top = Math.min(Math.min(...ys) - NODE_HALF_H, hub ? hub.y - HUB_HALF_H : Infinity);
+  const bottom = Math.max(...ys) + NODE_HALF_H;
+  const allXs = hub ? [...xs, hub.x] : xs;
+  return { x: (Math.min(...allXs) + Math.max(...allXs)) / 2, y: (top + bottom) / 2 };
+}
 
 /** Scale that fits a set of world points (plus node size) inside the canvas, so a folder's
- * children stay on screen regardless of how many there are or how the layout spaced them. */
-export function fitScale(points: Point[], canvasW: number, canvasH: number, min: number, max: number): number {
+ * children stay on screen regardless of how many there are or how the layout spaced them.
+ * `extraHeight` accommodates one outsized point (the project overview hub card) that's much
+ * taller than a standard node — passing it avoids clipping that card without needing per-point
+ * sizes threaded through the whole fit calculation. */
+export function fitScale(
+  points: Point[],
+  canvasW: number,
+  canvasH: number,
+  min: number,
+  max: number,
+  extraHeight = 0,
+): number {
   if (points.length === 0) return min;
   const xs = points.map((p) => p.x);
   const ys = points.map((p) => p.y);
   const width = Math.max(...xs) - Math.min(...xs) + NODE_W;
-  const height = Math.max(...ys) - Math.min(...ys) + NODE_H;
+  const height = Math.max(...ys) - Math.min(...ys) + NODE_H + extraHeight;
   const margin = 100;
   const scaleX = (canvasW - margin * 2) / Math.max(width, 1);
   const scaleY = (canvasH - margin * 2) / Math.max(height, 1);
   return Math.min(max, Math.max(min, Math.min(scaleX, scaleY)));
+}
+
+const OVERVIEW_GAP = 330;
+
+/** Position for the project-overview hub card: centered above the top-level
+ * folder grid, so folders visually read as arranged beneath it. */
+export function overviewPosition(topFolderPositions: Point[]): Point {
+  if (topFolderPositions.length === 0) return { x: 0, y: -OVERVIEW_GAP };
+  const xs = topFolderPositions.map((p) => p.x);
+  const minY = Math.min(...topFolderPositions.map((p) => p.y));
+  const centerX = (Math.min(...xs) + Math.max(...xs)) / 2;
+  return { x: centerX, y: minY - OVERVIEW_GAP };
 }
