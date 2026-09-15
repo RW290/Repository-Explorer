@@ -13,7 +13,7 @@ const CHILD_SPACING = 220;
 // grid (ceil(sqrt(n))) would push even three folders onto two rows, and that
 // extra vertical extent forces fitScale to zoom the whole repo view out far
 // enough that the cards become unreadably small.
-const MAX_FOLDER_COLS = 5;
+const MAX_FOLDER_COLS = 6;
 
 /**
  * Places top-level folders in a row (wrapping past MAX_FOLDER_COLS) beneath

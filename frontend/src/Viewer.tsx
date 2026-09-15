@@ -11,13 +11,13 @@ import "./Viewer.css";
 type Level = "repo" | "folder" | "file";
 
 const PANEL_WIDTH = 360;
-// Share of the viewport height left to the folder grid once the project
+// Share of the viewport height left to the folder grid once the compact project
 // overview claims the top of the screen. Mirrors the overview's max-height
 // in Viewer.css — keep the two in step.
-const OVERVIEW_BAND_REMAINDER = 0.36;
+const OVERVIEW_BAND_REMAINDER = 0.55;
 // Where the folder grid's center lands vertically at repo level when the
-// overview is present: low enough to sit clear of the prose above it.
-const FOLDER_BAND_CENTER = 0.79;
+// overview is present: below the compact overview, with room for the graph.
+const FOLDER_BAND_CENTER = 0.76;
 
 function truncate(text: string, max: number): string {
   const firstSentence = text.split(/(?<=[.!?])\s/)[0] ?? text;
@@ -66,7 +66,7 @@ export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
   // added.
   const folderBandH = hasOverviewCard ? viewportH * OVERVIEW_BAND_REMAINDER : viewportH;
   const repoScale = useMemo(
-    () => fitScale(topFolderPositions, canvasW, folderBandH, 0.45, 1.15),
+    () => fitScale(topFolderPositions, canvasW, folderBandH, 0.6, 1.35),
     [topFolderPositions, canvasW, folderBandH],
   );
 

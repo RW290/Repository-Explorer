@@ -204,21 +204,20 @@
 .file-rationale__error { margin: 8px 0 0; color: #f0787d; font-size: .7rem; }
 
 /* The project overview is screen-space, not part of .world: laid directly
-   over the canvas background with no card chrome, so it can own the top of
-   the screen at a readable size regardless of how many folders the grid
-   below it has to fit. Keep max-height in step with OVERVIEW_BAND_REMAINDER
-   in Viewer.tsx, which reserves the rest of the viewport for that grid. */
+   over the canvas background with no card chrome. Keep max-height in step with
+   OVERVIEW_BAND_REMAINDER in Viewer.tsx, which reserves the rest of the
+   viewport for the graph. */
 .overview-card {
   position: absolute;
   top: 74px;
   left: 50%;
   z-index: 8;
   width: min(1040px, 86vw);
-  max-height: 60vh;
+  max-height: 32vh;
   overflow-y: auto;
   /* Floor inside the scroll area so the last control isn't bisected by the
      clip edge — a half-cut button reads as a rendering bug, not as "scroll". */
-  padding: 0 4px 30px 0;
+  padding: 0 4px 16px 0;
   transform: translateX(-50%);
   cursor: default;
   scrollbar-width: thin;
@@ -226,14 +225,14 @@
 }
 .overview-card::-webkit-scrollbar { width: 7px; }
 .overview-card::-webkit-scrollbar-thumb { border-radius: 4px; background: rgba(150,140,210,.35); }
-.overview-card__kind { margin-bottom: 10px; color: #65d8c4; font-family: "DM Mono", monospace; font-size: .64rem; letter-spacing: .14em; text-transform: uppercase; }
-.overview-card__title { margin: 0 0 16px; color: #f5f3ff; font-size: 2.3rem; font-weight: 800; letter-spacing: -.02em; word-break: break-word; }
-.overview-card__text { max-width: 62ch; margin: 0; color: #d9dae5; font-size: 1.12rem; line-height: 1.75; }
-.overview-card__qa { margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,.08); display: flex; flex-direction: column; gap: 12px; }
+.overview-card__kind { margin-bottom: 7px; color: #65d8c4; font-family: "DM Mono", monospace; font-size: .6rem; letter-spacing: .14em; text-transform: uppercase; }
+.overview-card__title { margin: 0 0 9px; color: #f5f3ff; font-size: 1.75rem; font-weight: 800; letter-spacing: -.02em; word-break: break-word; }
+.overview-card__text { max-width: 70ch; margin: 0; color: #d9dae5; font-size: .92rem; line-height: 1.5; }
+.overview-card__qa { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.08); display: flex; flex-direction: column; gap: 8px; }
 .overview-card__q { margin: 0 0 6px; color: #a5a8ba; font-size: .78rem; font-style: italic; }
 .overview-card__a { margin: 0; color: #d9dae5; font-size: .84rem; line-height: 1.6; }
 .overview-card__toggle {
-  margin-top: 16px;
+  margin-top: 10px;
   padding: 9px 15px;
   border: 1px solid #4a4d90;
   border-radius: 8px;
