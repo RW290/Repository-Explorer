@@ -4,7 +4,7 @@ from app.miner import RawPR
 from app.parser import ParsedNode
 
 
-def merge(nodes: list[ParsedNode], extractions: list[dict]) -> dict:
+def merge(nodes: list[ParsedNode], extractions: list[dict], overview: str = "") -> dict:
     node_by_id = {n.id: n for n in nodes}
     node_ids = set(node_by_id)
 
@@ -49,4 +49,4 @@ def merge(nodes: list[ParsedNode], extractions: list[dict]) -> dict:
             }
         )
 
-    return {"nodes": node_list, "annotations": annotations}
+    return {"nodes": node_list, "annotations": annotations, "overview": overview}

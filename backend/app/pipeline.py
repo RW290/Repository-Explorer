@@ -51,13 +51,13 @@ def run_pipeline(repo_url: str, force_refresh: bool = False, on_stage: Callable[
         return json.loads(cache_path.read_text())
 
     with tempfile.TemporaryDirectory() as tmp:
-        nodes = run_parser(f"https://github.com/{owner}/{name}.git", Path(tmp), on_stage=on_stage)
+        nodes, overview = run_parser(f"https://github.com/{owner}/{name}.git", owner, name, Path(tmp), on_stage=on_stage)
 
     known_files = {n.id for n in nodes if n.type == "file"}
     extractions = run_miner(owner, name, known_files, on_stage=on_stage)
     if on_stage:
         on_stage("merging annotations into graph")
-    graph = merge(nodes, extractions)
+    graph = merge(nodes, extractions, overview)
     graph["repo_url"] = f"https://github.com/{owner}/{name}"
 
     CACHE_DIR.mkdir(exist_ok=True)

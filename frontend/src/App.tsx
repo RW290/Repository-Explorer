@@ -160,7 +160,7 @@ export function App() {
         </div>
       )}
 
-      <footer className="landing__footer">Built for curious engineers <span>·</span> Python repos, for now</footer>
+      <footer className="landing__footer">Built for curious engineers <span>·</span> Dependency graph is Python-only, for now</footer>
     </div>
   );
 }

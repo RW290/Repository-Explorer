@@ -23,9 +23,16 @@ from pydantic import BaseModel
 
 from app import github_client, rationale_store
 from app.errors import PipelineError
-from app.explain import DEFAULT_QUESTION, explain_selection
+from app.explain import (
+    DEFAULT_FILE_QUESTION,
+    DEFAULT_PROJECT_QUESTION,
+    DEFAULT_QUESTION,
+    explain_file,
+    explain_project,
+    explain_selection,
+)
 from app.jobs import get_job, start_job
-from app.models import Graph, LineRationale
+from app.models import FileRationale, Graph, LineRationale, ProjectRationale
 from app.pipeline import load_cached, parse_repo_url, run_pipeline
 
 # Generous cap on what gets sent to the browser for one file — this is about
@@ -75,6 +82,15 @@ class ExplainRequest(BaseModel):
     path: str
     start_line: int
     end_line: int
+    question: str | None = None
+
+
+class FileExplainRequest(BaseModel):
+    path: str
+    question: str | None = None
+
+
+class ProjectExplainRequest(BaseModel):
     question: str | None = None
 
 
@@ -202,6 +218,73 @@ def create_rationale(owner: str, name: str, payload: ExplainRequest) -> dict:
         "created_at": time.time(),
     }
     rationale_store.add_rationale(owner, name, entry)
+    return entry
+
+
+@app.get("/api/repos/{owner}/{name}/file-rationales", response_model=list[FileRationale])
+def get_file_rationales(owner: str, name: str, path: str = Query(...)) -> list[dict]:
+    return rationale_store.load_file_rationales(owner, name, path)
+
+
+@app.post("/api/repos/{owner}/{name}/file-rationales", response_model=FileRationale)
+def create_file_rationale(owner: str, name: str, payload: FileExplainRequest) -> dict:
+    """Answers "why does this file exist in the wider project?" using the
+    file's recorded summary and its place in the dependency graph (what it
+    depends on, what depends on it), then persists it the same way
+    line-level rationale is."""
+    cached = load_cached(f"https://github.com/{owner}/{name}")
+    if cached is None:
+        raise HTTPException(status_code=404, detail="This repository hasn't been analyzed yet.")
+
+    node = next((n for n in cached["nodes"] if n["id"] == payload.path), None)
+    if node is None:
+        raise HTTPException(status_code=404, detail=f"No file {payload.path!r} found in this repo's analysis.")
+
+    dependents = [n["id"] for n in cached["nodes"] if payload.path in n.get("dependencies", [])]
+
+    try:
+        answer = explain_file(
+            payload.path, node.get("summary", ""), node.get("dependencies", []), dependents, payload.question
+        )
+    except PipelineError as e:
+        raise HTTPException(status_code=e.http_status, detail=str(e))
+
+    entry = {
+        "id": str(uuid.uuid4()),
+        "path": payload.path,
+        "question": payload.question or DEFAULT_FILE_QUESTION,
+        "answer": answer,
+        "created_at": time.time(),
+    }
+    rationale_store.add_file_rationale(owner, name, entry)
+    return entry
+
+
+@app.get("/api/repos/{owner}/{name}/project-rationales", response_model=list[ProjectRationale])
+def get_project_rationales(owner: str, name: str) -> list[dict]:
+    return rationale_store.load_project_rationales(owner, name)
+
+
+@app.post("/api/repos/{owner}/{name}/project-rationales", response_model=ProjectRationale)
+def create_project_rationale(owner: str, name: str, payload: ProjectExplainRequest) -> dict:
+    """Answers a follow-up question about the whole project, grounded in its
+    generated overview, then persists it the same way file/line rationale is."""
+    cached = load_cached(f"https://github.com/{owner}/{name}")
+    if cached is None:
+        raise HTTPException(status_code=404, detail="This repository hasn't been analyzed yet.")
+
+    try:
+        answer = explain_project(owner, name, cached.get("overview") or "", payload.question)
+    except PipelineError as e:
+        raise HTTPException(status_code=e.http_status, detail=str(e))
+
+    entry = {
+        "id": str(uuid.uuid4()),
+        "question": payload.question or DEFAULT_PROJECT_QUESTION,
+        "answer": answer,
+        "created_at": time.time(),
+    }
+    rationale_store.add_project_rationale(owner, name, entry)
     return entry
 
 

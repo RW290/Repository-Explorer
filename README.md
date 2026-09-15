@@ -169,9 +169,12 @@ possible, and what's still your call to make before picking a host.
 
 ## Known limitations / not yet done
 
-- Tested against two Python repos only. No multi-language support, by
-  design (v1 scope, Python only) — untried on non-Python or heavily
-  dynamic-import codebases.
+- Every file in a repo becomes a node with an LLM summary, regardless of
+  language (lockfiles, generated/vendor output, and binary/media files are
+  excluded — see `EXCLUDE_FILE_NAMES`/`EXCLUDE_FILE_SUFFIXES` in
+  `backend/app/parser.py`). Dependency *edges*, though, are Python-only —
+  there's no import-graph resolution for other languages, so a JS/Rust/etc.
+  file always shows as a node with no arrows in or out.
 - The viewer's zoom model is 2 levels deep (folder → file); a repo with
   deeply nested subpackages gets flattened one level.
 - Annotation mining is capped at the 40 most recently updated merged PRs

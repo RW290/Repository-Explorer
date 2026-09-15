@@ -1,14 +1,18 @@
+import { useState } from "react";
 import type { Annotation, GraphNode } from "./types";
+import { FileRationalePanel } from "./FileRationalePanel";
 
 interface Props {
   node: GraphNode;
   annotations: Annotation[];
   onClose: () => void;
   onViewSource?: () => void;
+  fileRationale?: { owner: string; name: string; path: string };
 }
 
-export function DetailPanel({ node, annotations, onClose, onViewSource }: Props) {
+export function DetailPanel({ node, annotations, onClose, onViewSource, fileRationale }: Props) {
   const sorted = [...annotations].sort((a, b) => a.date.localeCompare(b.date));
+  const [showFileRationale, setShowFileRationale] = useState(false);
 
   return (
     <aside className="detail-panel">
@@ -18,11 +22,19 @@ export function DetailPanel({ node, annotations, onClose, onViewSource }: Props)
       <div className="detail-panel__kind">{node.type}</div>
       <h2 className="detail-panel__title">{node.id}</h2>
       <p className="detail-panel__summary">{node.summary}</p>
-      {onViewSource && (
-        <button className="detail-panel__view-source" onClick={onViewSource}>
-          View source &amp; ask why <span aria-hidden="true">→</span>
-        </button>
-      )}
+      <div className="detail-panel__actions">
+        {onViewSource && (
+          <button className="detail-panel__view-source" onClick={onViewSource}>
+            View source &amp; ask why <span aria-hidden="true">→</span>
+          </button>
+        )}
+        {fileRationale && (
+          <button className="detail-panel__view-source" onClick={() => setShowFileRationale((v) => !v)}>
+            {showFileRationale ? "Hide" : "Why does this file exist?"} <span aria-hidden="true">→</span>
+          </button>
+        )}
+      </div>
+      {showFileRationale && fileRationale && <FileRationalePanel {...fileRationale} />}
 
       <h3>Dependencies</h3>
       {node.dependencies.length === 0 ? (

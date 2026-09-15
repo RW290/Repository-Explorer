@@ -1,9 +1,12 @@
 """Architecture parser (phase 2): local static analysis, no LLM for the graph shape.
 
-Clones the target repo, discovers Python files, and builds a file-level
-dependency graph from imports using the `ast` module — not a full
-type-checker, just best-effort static resolution. LLM calls are used only
-for the batched file summaries, never for the dependency edges themselves.
+Clones the target repo, discovers every file worth showing, and builds a
+file-level dependency graph from Python imports using the `ast` module —
+not a full type-checker, just best-effort static resolution. Non-Python
+files become nodes (and get LLM summaries) the same as Python files, but
+never get dependency edges — there's no import-parsing for other
+languages here. LLM calls are used only for the batched file summaries and
+the project overview, never for the dependency edges themselves.
 """
 
 import ast
@@ -12,13 +15,37 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from app.errors import ConfigurationError, RepoCloneError
+from app.errors import ConfigurationError, PipelineError, RepoCloneError
 from app.llm import call_llm, call_with_retry
 
-EXCLUDE_DIR_NAMES = {".git", "__pycache__", "node_modules", ".venv", "venv", "docs", "examples"}
+EXCLUDE_DIR_NAMES = {
+    ".git", "__pycache__", "node_modules", ".venv", "venv",
+    "dist", "build", "out", "target", ".next", ".nuxt",
+    ".pytest_cache", ".mypy_cache", ".ruff_cache", "coverage",
+}
+# Lockfiles: content is auto-generated and not something a reader wants
+# summarized — same reasoning as excluding node_modules/.venv wholesale.
+EXCLUDE_FILE_NAMES = {
+    "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "bun.lockb",
+    "Pipfile.lock", "poetry.lock", "uv.lock", "Cargo.lock",
+    "Gemfile.lock", "composer.lock", "go.sum",
+}
+# Minified/binary/media: either unreadable as text or meaningless to
+# summarize (a summary of compiled or binary bytes says nothing useful).
+EXCLUDE_FILE_SUFFIXES = (
+    ".min.js", ".min.css", ".map",
+    ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".icns", ".webp", ".bmp", ".heic", ".tiff",
+    ".woff", ".woff2", ".ttf", ".eot", ".otf",
+    ".pdf", ".zip", ".tar", ".gz", ".whl", ".jar", ".wasm",
+    ".pyc", ".so", ".dylib", ".dll", ".exe", ".bin", ".class",
+    ".mp3", ".mp4", ".mov", ".wav",
+    ".db", ".sqlite",
+)
 ROOT_FOLDER_ID = "(root)"
 MAX_FILE_CHARS_FOR_SUMMARY = 3000
 SUMMARY_BATCH_SIZE = 6
+OVERVIEW_README_NAMES = ("README.md", "README.rst", "README.txt", "README")
+MAX_README_CHARS_FOR_OVERVIEW = 6000
 
 
 @dataclass
@@ -71,11 +98,17 @@ def _translate_clone_error(e: subprocess.CalledProcessError, repo_url: str) -> E
     return RepoCloneError(f"Downloading {repo_url} failed: {detail}")
 
 
-def discover_python_files(repo_root: Path) -> list[Path]:
+def discover_files(repo_root: Path) -> list[Path]:
     files = []
-    for path in repo_root.rglob("*.py"):
+    for path in repo_root.rglob("*"):
+        if not path.is_file():
+            continue
         rel = path.relative_to(repo_root)
         if any(part in EXCLUDE_DIR_NAMES for part in rel.parts):
+            continue
+        if path.name in EXCLUDE_FILE_NAMES:
+            continue
+        if path.name.lower().endswith(EXCLUDE_FILE_SUFFIXES):
             continue
         files.append(path)
     return sorted(files)
@@ -146,15 +179,18 @@ def _resolve_import(
 
 
 def build_dependency_graph(repo_root: Path, files: list[Path]) -> dict[str, list[str]]:
+    """Every file gets an entry (possibly empty); only .py files get edges,
+    since import resolution below is Python-specific."""
     known_files = {str(f.relative_to(repo_root)) for f in files}
-    graph: dict[str, list[str]] = {}
+    graph: dict[str, list[str]] = {str(f.relative_to(repo_root)): [] for f in files}
     for f in files:
+        if f.suffix != ".py":
+            continue
         rel = f.relative_to(repo_root)
         rel_str = str(rel)
         try:
             tree = ast.parse(f.read_text(encoding="utf-8", errors="ignore"))
         except SyntaxError:
-            graph[rel_str] = []
             continue
         deps: set[str] = set()
         for module, level, names in _extract_import_statements(tree):
@@ -248,11 +284,55 @@ def build_folder_summary(folder_id: str, child_ids: list[str]) -> str:
     return f"Folder containing {len(child_ids)} file(s): {names}{suffix}."
 
 
-def run_parser(repo_url: str, workdir: Path, on_stage: Callable[[str], None] | None = None) -> list[ParsedNode]:
+def _find_readme(repo_root: Path) -> str | None:
+    for candidate_name in OVERVIEW_README_NAMES:
+        candidate = repo_root / candidate_name
+        if candidate.is_file():
+            try:
+                return candidate.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                return None
+    return None
+
+
+def _overview_prompt(owner: str, name: str, readme: str | None, folder_summaries: list[str]) -> str:
+    if readme:
+        source = f"Its README:\n```\n{readme[:MAX_README_CHARS_FOR_OVERVIEW]}\n```"
+    else:
+        source = "It has no README. Here's what its top-level folders contain:\n" + "\n".join(folder_summaries)
+    return f"""Write a brief orientation to the GitHub project "{owner}/{name}" for a
+curious reader who has never seen this codebase and isn't a programmer.
+
+{source}
+
+In plain, everyday language (avoid unexplained jargon; briefly explain any
+essential technical term right where it's used), cover in 3-5 sentences total:
+- What this project is / what problem it solves
+- What it actually does, broadly
+- How it broadly works (the shape of it, not implementation detail)
+
+Write it as flowing prose, not a bulleted list.
+"""
+
+
+def generate_overview(repo_root: Path, owner: str, name: str, folder_summaries: list[str]) -> str:
+    """Best-effort: an overview is a nice-to-have orientation, not core to the
+    graph, so a transient LLM failure degrades to an empty string rather than
+    failing the whole analysis."""
+    prompt = _overview_prompt(owner, name, _find_readme(repo_root), folder_summaries)
+    try:
+        return call_with_retry(lambda: call_llm(prompt)).strip()
+    except PipelineError:
+        return ""
+
+
+def run_parser(
+    repo_url: str, owner: str, name: str, workdir: Path, on_stage: Callable[[str], None] | None = None
+) -> tuple[list[ParsedNode], str]:
     if on_stage:
         on_stage("cloning repository")
     repo_root = clone_repo(repo_url, workdir)
-    files = discover_python_files(repo_root)
+    files = discover_files(repo_root)
     if on_stage:
         on_stage(f"analyzing {len(files)} files")
     dependencies = build_dependency_graph(repo_root, files)
@@ -267,8 +347,14 @@ def run_parser(repo_url: str, workdir: Path, on_stage: Callable[[str], None] | N
     for n in file_nodes:
         if n.parent:
             children_by_folder.setdefault(n.parent, []).append(n.id)
+    folder_summaries = []
     for n in nodes:
         if n.type == "folder":
             n.summary = build_folder_summary(n.id, children_by_folder.get(n.id, []))
+            folder_summaries.append(f"- {n.id}: {n.summary}")
 
-    return nodes
+    if on_stage:
+        on_stage("writing project overview")
+    overview = generate_overview(repo_root, owner, name, folder_summaries)
+
+    return nodes, overview

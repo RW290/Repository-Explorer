@@ -1,4 +1,4 @@
-import type { AnalysisStatus, FileContent, Graph, LineRationale } from "./types";
+import type { AnalysisStatus, FileContent, FileRationale, Graph, LineRationale, ProjectRationale } from "./types";
 
 // Use same-origin API paths by default so Replit's proxy can route requests to
 // the local backend. A separately deployed backend can still be configured.
@@ -68,6 +68,41 @@ export async function askWhy(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ path, start_line: startLine, end_line: endLine, question: question || null }),
+    }),
+  );
+}
+
+export async function fetchFileRationales(owner: string, name: string, path: string): Promise<FileRationale[]> {
+  return asJson(
+    await fetch(`${API_BASE}/api/repos/${owner}/${name}/file-rationales?path=${encodeURIComponent(path)}`),
+  );
+}
+
+export async function askWhyFileExists(
+  owner: string,
+  name: string,
+  path: string,
+  question?: string,
+): Promise<FileRationale> {
+  return asJson(
+    await fetch(`${API_BASE}/api/repos/${owner}/${name}/file-rationales`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path, question: question || null }),
+    }),
+  );
+}
+
+export async function fetchProjectRationales(owner: string, name: string): Promise<ProjectRationale[]> {
+  return asJson(await fetch(`${API_BASE}/api/repos/${owner}/${name}/project-rationales`));
+}
+
+export async function askAboutProject(owner: string, name: string, question?: string): Promise<ProjectRationale> {
+  return asJson(
+    await fetch(`${API_BASE}/api/repos/${owner}/${name}/project-rationales`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: question || null }),
     }),
   );
 }

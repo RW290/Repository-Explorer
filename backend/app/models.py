@@ -38,6 +38,11 @@ class Graph(BaseModel):
     # repo — the frontend uses this to decide whether source-viewing and
     # line rationale are available at all.
     repo_url: str | None = None
+    # Brief LLM-generated orientation to the whole project, generated once
+    # during analysis (see parser.generate_overview) and cached here rather
+    # than regenerated per view. Empty string if generation failed or the
+    # repo has neither a README nor folder structure to summarize from.
+    overview: str = ""
 
 
 class LineRationale(BaseModel):
@@ -46,6 +51,21 @@ class LineRationale(BaseModel):
     start_line: int
     end_line: int
     selected_text: str
+    question: str
+    answer: str
+    created_at: float
+
+
+class FileRationale(BaseModel):
+    id: str
+    path: str
+    question: str
+    answer: str
+    created_at: float
+
+
+class ProjectRationale(BaseModel):
+    id: str
     question: str
     answer: str
     created_at: float

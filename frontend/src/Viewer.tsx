@@ -4,6 +4,7 @@ import { centroid, computeLayout, fitScale } from "./layout";
 import { parseRepoUrl } from "./api";
 import { DetailPanel } from "./DetailPanel";
 import { SourceViewer } from "./SourceViewer";
+import { ProjectOverview } from "./ProjectOverview";
 import "./Viewer.css";
 
 type Level = "repo" | "folder" | "file";
@@ -182,6 +183,11 @@ export function Viewer({ graph, onBack }: Props) {
           onViewSource={
             repo && selectedNode.type === "file" ? () => setViewingSource(true) : undefined
           }
+          fileRationale={
+            repo && selectedNode.type === "file"
+              ? { owner: repo.owner, name: repo.name, path: selectedNode.id }
+              : undefined
+          }
         />
       )}
 
@@ -192,6 +198,10 @@ export function Viewer({ graph, onBack }: Props) {
           path={selectedNode.id}
           onClose={() => setViewingSource(false)}
         />
+      )}
+
+      {level === "repo" && repo && graph.overview && (
+        <ProjectOverview owner={repo.owner} name={repo.name} overview={graph.overview} />
       )}
     </div>
   );

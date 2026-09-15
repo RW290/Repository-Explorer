@@ -28,6 +28,9 @@ export interface Graph {
   // repo — the viewer uses this to decide whether source-viewing and line
   // rationale are available at all.
   repo_url: string | null;
+  // Brief LLM-generated orientation to the whole project. Empty string if
+  // generation failed or there was nothing to generate it from.
+  overview: string;
 }
 
 export interface LineRationale {
@@ -36,6 +39,21 @@ export interface LineRationale {
   start_line: number;
   end_line: number;
   selected_text: string;
+  question: string;
+  answer: string;
+  created_at: number;
+}
+
+export interface FileRationale {
+  id: string;
+  path: string;
+  question: string;
+  answer: string;
+  created_at: number;
+}
+
+export interface ProjectRationale {
+  id: string;
   question: string;
   answer: string;
   created_at: number;
