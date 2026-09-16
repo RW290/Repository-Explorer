@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { askWhyFileExists, fetchFileRationales } from "./api";
 import type { FileRationale } from "./types";
+import { stripMarkdown } from "./markdown";
 
 interface Props {
   owner: string;
@@ -50,7 +51,7 @@ export function FileRationalePanel({ owner, name, path }: Props) {
           {entries.map((e) => (
             <div key={e.id} className="file-rationale__entry">
               <p className="file-rationale__q">{e.question}</p>
-              <p className="file-rationale__a">{e.answer}</p>
+              <p className="file-rationale__a">{stripMarkdown(e.answer)}</p>
             </div>
           ))}
           <textarea

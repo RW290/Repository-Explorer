@@ -40,7 +40,9 @@ File: {path}
 {context}
 ```
 
-The reader highlighted exactly these lines:
+The reader highlighted exactly this (it may be a fragment of a line rather than
+whole lines — answer about this specific text, using the surrounding code only
+as context):
 ```
 {selected_text}
 ```
@@ -59,9 +61,14 @@ def explain_selection(
     question: str | None = None,
     file_summary: str | None = None,
     dependencies: list[str] | None = None,
+    selected_text: str | None = None,
 ) -> str:
+    """`selected_text` is what the reader actually highlighted, which can be a
+    fragment of a line rather than whole lines. Falling back to the full line
+    range when it's absent keeps callers that only know a range working, but
+    asks a blunter question than the reader intended."""
     lines = file_content.splitlines()
-    selected_text = "\n".join(lines[start_line - 1 : end_line])[:MAX_SELECTION_CHARS]
+    selected_text = (selected_text or "\n".join(lines[start_line - 1 : end_line]))[:MAX_SELECTION_CHARS]
     context = _extract_context(file_content, start_line, end_line)
     prompt = _prompt(path, selected_text, context, question or DEFAULT_QUESTION, file_summary, dependencies)
     return call_with_retry(lambda: call_llm(prompt)).strip()

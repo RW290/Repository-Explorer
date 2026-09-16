@@ -83,6 +83,9 @@ class ExplainRequest(BaseModel):
     start_line: int
     end_line: int
     question: str | None = None
+    # The exact substring highlighted in the viewer. Optional: a caller that
+    # only knows a line range still works, it just asks about whole lines.
+    selected_text: str | None = None
 
 
 class FileExplainRequest(BaseModel):
@@ -211,6 +214,7 @@ def create_rationale(owner: str, name: str, payload: ExplainRequest) -> dict:
             payload.question,
             file_summary,
             file_dependencies,
+            payload.selected_text,
         )
     except PipelineError as e:
         raise HTTPException(status_code=e.http_status, detail=str(e))
@@ -220,7 +224,8 @@ def create_rationale(owner: str, name: str, payload: ExplainRequest) -> dict:
         "path": payload.path,
         "start_line": payload.start_line,
         "end_line": payload.end_line,
-        "selected_text": "\n".join(lines[payload.start_line - 1 : payload.end_line]),
+        "selected_text": payload.selected_text
+        or "\n".join(lines[payload.start_line - 1 : payload.end_line]),
         "question": payload.question or DEFAULT_QUESTION,
         "answer": answer,
         "created_at": time.time(),

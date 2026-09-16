@@ -62,12 +62,21 @@ export async function askWhy(
   startLine: number,
   endLine: number,
   question?: string,
+  // The exact highlighted substring. The line range alone would widen the
+  // question to whole lines, losing which part of the line was picked out.
+  selectedText?: string,
 ): Promise<LineRationale> {
   return asJson(
     await fetch(`${API_BASE}/api/repos/${owner}/${name}/rationales`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path, start_line: startLine, end_line: endLine, question: question || null }),
+      body: JSON.stringify({
+        path,
+        start_line: startLine,
+        end_line: endLine,
+        question: question || null,
+        selected_text: selectedText || null,
+      }),
     }),
   );
 }

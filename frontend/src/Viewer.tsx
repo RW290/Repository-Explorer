@@ -1,12 +1,16 @@
-import { useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import type { Graph, GraphNode } from "./types";
 import { computeLayout, fitScale, repoViewCenter } from "./layout";
 import { parseRepoUrl } from "./api";
 import { DetailPanel } from "./DetailPanel";
-import { SourceViewer } from "./SourceViewer";
 import { ProjectOverview } from "./ProjectOverview";
 import { ThemeToggle, type Theme } from "./ThemeToggle";
 import "./Viewer.css";
+
+// Lazy: this chunk carries highlight.js (see SourceViewer's default export),
+// which would otherwise more than double the initial bundle for a panel most
+// visitors never open.
+const SourceViewer = lazy(() => import("./SourceViewer"));
 
 type Level = "repo" | "folder" | "file";
 
@@ -108,12 +112,16 @@ export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
     [selectedNodeId, positions, canvasW, viewportH, folderScale],
   );
 
+  // Falls back rather than indexing blindly: any level/selection combination
+  // that leaves no position to aim at used to dereference undefined here and
+  // take the whole app down with it, which is far too harsh a failure for a
+  // camera that could simply stay where it is.
   const target =
-    level === "repo"
+    (level === "repo"
       ? repoCenter
       : level === "folder"
-        ? positions[activeFolderId!]
-        : positions[selectedNodeId!];
+        ? positions[activeFolderId ?? ""]
+        : positions[selectedNodeId ?? ""]) ?? repoCenter;
   const scale = level === "repo" ? repoScale : level === "folder" ? folderScale : fileScale;
 
   const tx = canvasW / 2 - target.x * scale;
@@ -149,6 +157,17 @@ export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
     setViewingSource(false);
   }
 
+  /** One step out: code view → file → folder → repo. */
+  function goBackOneStep() {
+    if (viewingSource) {
+      setViewingSource(false);
+    } else if (level === "file" && activeFolderId) {
+      goToFolder();
+    } else {
+      goToRepo();
+    }
+  }
+
   const selectedNode = selectedNodeId ? byId.get(selectedNodeId) ?? null : null;
   const selectedAnnotations = selectedNode
     ? graph.annotations.filter((a) => selectedNode.annotations.includes(a.id))
@@ -181,6 +200,14 @@ export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
           <>
             <span className="breadcrumbs__sep">/</span>
             <button className="active">{selectedNode.id.split("/").pop()}</button>
+          </>
+        )}
+        {(level !== "repo" || viewingSource) && (
+          <>
+            <span className="breadcrumbs__sep">/</span>
+            <button className="breadcrumbs__back" onClick={goBackOneStep} title="Back one step">
+              ↰ back
+            </button>
           </>
         )}
       </div>
@@ -240,9 +267,13 @@ export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
         <DetailPanel
           node={selectedNode}
           annotations={selectedAnnotations}
+          // Dismissing the panel has to step the camera out too: at file
+          // level it's aimed at the very node being deselected, so leaving
+          // the level alone would point it at nothing.
           onClose={() => {
-            setSelectedNodeId(null);
             setViewingSource(false);
+            if (level === "file" && activeFolderId) goToFolder();
+            else goToRepo();
           }}
           onViewSource={
             repo && selectedNode.type === "file" ? () => setViewingSource(true) : undefined
@@ -256,12 +287,14 @@ export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
       )}
 
       {viewingSource && repo && selectedNode && (
-        <SourceViewer
-          owner={repo.owner}
-          name={repo.name}
-          path={selectedNode.id}
-          onClose={() => setViewingSource(false)}
-        />
+        <Suspense fallback={null}>
+          <SourceViewer
+            owner={repo.owner}
+            name={repo.name}
+            path={selectedNode.id}
+            onClose={() => setViewingSource(false)}
+          />
+        </Suspense>
       )}
 
       {hasOverviewCard && level === "repo" && (

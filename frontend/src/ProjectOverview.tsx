@@ -1,6 +1,7 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { askAboutProject, fetchProjectRationales } from "./api";
 import type { ProjectRationale } from "./types";
+import { stripMarkdown } from "./markdown";
 
 interface Props {
   owner: string;
@@ -9,23 +10,8 @@ interface Props {
   style?: CSSProperties;
 }
 
-function cleanOverview(text: string): string {
-  return text
-    .replace(/```[a-zA-Z0-9_-]*\s*/g, "")
-    .replace(/^\s*#{1,6}\s+/gm, "")
-    .replace(/^\s*(?:[-*+]|\d+[.)])\s+/gm, "")
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .replace(/__([^_]+)__/g, "$1")
-    .replace(/(^|[\s(])\*([^*]+)\*(?=[\s).,!?:;]|$)/g, "$1$2")
-    .replace(/(^|[\s(])_([^_]+)_(?=[\s).,!?:;]|$)/g, "$1$2")
-    .replace(/[ \t]+\n/g, "\n")
-    .trim();
-}
-
 function splitOverview(text: string): string[] {
-  const cleaned = cleanOverview(text);
+  const cleaned = stripMarkdown(text);
   const blocks = cleaned
     .trim()
     .split(/\n\s*\n|\n/)

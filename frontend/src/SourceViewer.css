@@ -88,15 +88,16 @@
 .source-line__no {
   width: 42px;
   flex: none;
-  padding: 0 8px 0 0;
+  padding: 0 12px 0 0;
   border: none;
   background: none;
   color: #565a6c;
-  cursor: pointer;
   font: inherit;
+  /* Not part of the code: keeps line numbers out of a copied or highlighted
+     range, which is the whole point of selecting text rather than lines. */
+  user-select: none;
   text-align: right;
 }
-.source-line__no:hover { color: #b6adff; }
 .source-line--selected .source-line__no { color: #c7c1ff; font-weight: 700; }
 
 .source-line__text {
@@ -244,7 +245,6 @@ html[data-theme="light"] .source-viewer__error { color: #b93b47; }
 html[data-theme="light"] .source-line:hover { background: rgba(71, 85, 105, .05); }
 html[data-theme="light"] .source-line--selected { background: rgba(117, 97, 223, .13); }
 html[data-theme="light"] .source-line__no { color: #9aa3b1; }
-html[data-theme="light"] .source-line__no:hover { color: #5d4ac3; }
 html[data-theme="light"] .source-line--selected .source-line__no { color: #44349e; }
 html[data-theme="light"] .source-line__text { color: #273142; }
 html[data-theme="light"] .source-line__marker { color: #168b7a; }
@@ -279,3 +279,99 @@ html[data-theme="light"] .rationale-thread {
 html[data-theme="light"] .rationale-thread__meta { color: #5d4ac3; }
 html[data-theme="light"] .rationale-thread__q { color: #687386; }
 html[data-theme="light"] .rationale-thread__a { color: #273142; }
+
+/* --- IDE chrome --------------------------------------------------------- */
+
+.source-viewer__back {
+  flex: none;
+  margin-right: 12px;
+  padding: 5px 10px;
+  border: 1px solid #303240;
+  border-radius: 7px;
+  background: #1d1e29;
+  color: #b6adff;
+  cursor: pointer;
+  font-size: .72rem;
+  font-weight: 600;
+}
+.source-viewer__back:hover { border-color: #7670ba; color: #f0eff7; }
+
+.source-viewer__code {
+  /* A gutter rule, like an editor's — and the code pane gets its own slightly
+     recessed surface so it reads as an editor rather than a text blob. */
+  background: #0d0e14;
+}
+.source-line__no {
+  border-right: 1px solid #22242d;
+  text-align: right;
+}
+
+/* The excerpt of exactly what was highlighted, echoed back so it's obvious
+   what the question will be about. */
+.ask-why__excerpt {
+  max-height: 128px;
+  margin: 0 0 10px;
+  overflow: auto;
+  padding: 8px 9px;
+  border-left: 2px solid #7166c9;
+  border-radius: 0 6px 6px 0;
+  background: rgba(126,109,255,.08);
+  color: #c9cbd8;
+  font-family: "DM Mono", monospace;
+  font-size: .68rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* --- Syntax colours (dark) ---------------------------------------------- */
+.hljs-keyword, .hljs-literal, .hljs-selector-tag { color: #c792ea; }
+.hljs-string, .hljs-regexp, .hljs-addition { color: #98d08a; }
+.hljs-comment, .hljs-quote { color: #6b7089; font-style: italic; }
+.hljs-number, .hljs-symbol { color: #f5a97f; }
+.hljs-title, .hljs-title.function_, .hljs-section { color: #82aaff; }
+.hljs-title.class_, .hljs-type, .hljs-built_in { color: #ffcb6b; }
+.hljs-attr, .hljs-attribute, .hljs-variable, .hljs-template-variable { color: #7fdbca; }
+.hljs-params { color: #d3d4de; }
+.hljs-meta { color: #89a4d4; }
+.hljs-deletion { color: #f0787d; }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: 700; }
+
+/* --- Syntax colours (light) --------------------------------------------- */
+html[data-theme="light"] .source-viewer__code { background: #fbfcfe; }
+html[data-theme="light"] .source-line__no { border-right-color: #e8eaf1; }
+html[data-theme="light"] .source-viewer__back {
+  border-color: #dcd9f0;
+  background: #f0effd;
+  color: #5d4ac3;
+}
+html[data-theme="light"] .source-viewer__back:hover { border-color: #a99ff0; color: #2f2480; }
+html[data-theme="light"] .ask-why__excerpt {
+  border-left-color: #7561df;
+  background: rgba(117,97,223,.07);
+  color: #3d4657;
+}
+html[data-theme="light"] .hljs-keyword,
+html[data-theme="light"] .hljs-literal,
+html[data-theme="light"] .hljs-selector-tag { color: #8250df; }
+html[data-theme="light"] .hljs-string,
+html[data-theme="light"] .hljs-regexp,
+html[data-theme="light"] .hljs-addition { color: #1a7f37; }
+html[data-theme="light"] .hljs-comment,
+html[data-theme="light"] .hljs-quote { color: #7d8796; }
+html[data-theme="light"] .hljs-number,
+html[data-theme="light"] .hljs-symbol { color: #bc4c00; }
+html[data-theme="light"] .hljs-title,
+html[data-theme="light"] .hljs-title.function_,
+html[data-theme="light"] .hljs-section { color: #0550ae; }
+html[data-theme="light"] .hljs-title.class_,
+html[data-theme="light"] .hljs-type,
+html[data-theme="light"] .hljs-built_in { color: #953800; }
+html[data-theme="light"] .hljs-attr,
+html[data-theme="light"] .hljs-attribute,
+html[data-theme="light"] .hljs-variable,
+html[data-theme="light"] .hljs-template-variable { color: #116329; }
+html[data-theme="light"] .hljs-params { color: #273142; }
+html[data-theme="light"] .hljs-meta { color: #4b5c7a; }
+html[data-theme="light"] .hljs-deletion { color: #b93b47; }

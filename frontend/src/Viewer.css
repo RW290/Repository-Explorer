@@ -509,3 +509,10 @@ html[data-theme="light"] .annotation__confidence--medium { background: rgba(196,
 html[data-theme="light"] .annotation__confidence--low { background: rgba(200, 67, 74, .12); color: #a32f37; }
 html[data-theme="light"] .file-rationale__error,
 html[data-theme="light"] .overview-card__error { color: #b93b47; }
+
+/* Steps out one level (code view → file → folder → repo). Distinct from the
+   leading ← which leaves the viewer entirely for the repo picker. */
+.breadcrumbs__back { color: #b6adff !important; font-weight: 500; }
+.breadcrumbs__back:hover { color: #e4dfff !important; }
+html[data-theme="light"] .breadcrumbs__back { color: #5d4ac3 !important; }
+html[data-theme="light"] .breadcrumbs__back:hover { color: #3a2b96 !important; }
