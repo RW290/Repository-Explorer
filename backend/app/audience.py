@@ -20,5 +20,8 @@ AUDIENCE_FRAMING = (
     "Use precise technical language; don't simplify away real terms, but do "
     "explain why a term matters here if that's not obvious. If there isn't "
     "enough context to responsibly infer a design rationale, say what's "
-    "actually knowable instead of guessing."
+    "actually knowable instead of guessing. Wrap identifiers — function, "
+    "class, file, module and library names — in backticks, and put any "
+    "multi-line code example in a fenced ``` block, so code is "
+    "distinguishable from prose."
 )

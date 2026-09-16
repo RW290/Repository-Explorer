@@ -516,3 +516,34 @@ html[data-theme="light"] .overview-card__error { color: #b93b47; }
 .breadcrumbs__back:hover { color: #e4dfff !important; }
 html[data-theme="light"] .breadcrumbs__back { color: #5d4ac3 !important; }
 html[data-theme="light"] .breadcrumbs__back:hover { color: #3a2b96 !important; }
+
+/* Inline code and fenced blocks inside model-written prose (see markdown.tsx). */
+.rich__code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(126,109,255,.14);
+  color: #cfc6ff;
+  font-family: "DM Mono", monospace;
+  font-size: .88em;
+  overflow-wrap: anywhere;
+}
+.rich__block {
+  margin: 8px 0;
+  padding: 9px 11px;
+  overflow-x: auto;
+  border-left: 2px solid #7166c9;
+  border-radius: 0 6px 6px 0;
+  background: rgba(10,11,16,.75);
+  color: #d3d4de;
+  font-family: "DM Mono", monospace;
+  font-size: .8em;
+  line-height: 1.55;
+}
+.rich__block code { font: inherit; }
+
+html[data-theme="light"] .rich__code { background: rgba(117,97,223,.12); color: #4a3aa8; }
+html[data-theme="light"] .rich__block {
+  border-left-color: #7561df;
+  background: #f4f5f9;
+  color: #303a4b;
+}

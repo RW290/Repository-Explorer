@@ -318,8 +318,9 @@ Cover in 4-6 sentences across 2-3 short paragraphs (not a bulleted list):
   no real signal for it.
 
 Keep each paragraph focused on one idea, and leave a blank line between paragraphs.
-Return plain text only: do not use Markdown headings, bullets, bold markers,
-backticks, code fences, or links.
+Write flowing prose — no headings, bullets, or links. Do wrap any identifier
+in backticks (`Session`, `requests.get`, `urllib3`), so code reads as code
+rather than running together with the prose.
 """
 
 

@@ -1,7 +1,7 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { askAboutProject, fetchProjectRationales } from "./api";
 import type { ProjectRationale } from "./types";
-import { stripMarkdown } from "./markdown";
+import { RichText } from "./markdown";
 
 interface Props {
   owner: string;
@@ -11,9 +11,8 @@ interface Props {
 }
 
 function splitOverview(text: string): string[] {
-  const cleaned = stripMarkdown(text);
-  const blocks = cleaned
-    .trim()
+  const trimmed = text.trim();
+  const blocks = trimmed
     .split(/\n\s*\n|\n/)
     .map((block) => block.trim())
     .filter(Boolean);
@@ -22,13 +21,19 @@ function splitOverview(text: string): string[] {
 
   // Older cached overviews are usually one 4–6 sentence paragraph. Grouping
   // sentences keeps those results readable without requiring a re-analysis.
-  const sentences = cleaned.match(/[^.!?]+[.!?]+(?:\s|$)/g)?.map((sentence) => sentence.trim()) ?? [];
-  if (sentences.length < 3) return [cleaned];
+  // Code spans are masked out first: an identifier like `requests.get` holds
+  // a period, and splitting inside one would orphan its backtick.
+  const spans: string[] = [];
+  const masked = trimmed.replace(/`[^`]+`/g, (span) => `\u0000${spans.push(span) - 1}\u0000`);
+  const restore = (s: string) => s.replace(/\u0000(\d+)\u0000/g, (_, i) => spans[Number(i)]);
+
+  const sentences = masked.match(/[^.!?]+[.!?]+(?:\s|$)/g)?.map((sentence) => sentence.trim()) ?? [];
+  if (sentences.length < 3) return [trimmed];
 
   const groups: string[] = [];
   const groupSize = Math.ceil(sentences.length / 2);
   for (let index = 0; index < sentences.length; index += groupSize) {
-    groups.push(sentences.slice(index, index + groupSize).join(" "));
+    groups.push(restore(sentences.slice(index, index + groupSize).join(" ")));
   }
   return groups;
 }
@@ -70,18 +75,14 @@ export function ProjectOverview({ owner, name, overview, style }: Props) {
     <div className="overview-card" style={style} onClick={(e) => e.stopPropagation()}>
       <div className="overview-card__kind">Project overview</div>
       <h2 className="overview-card__title">{name}</h2>
-      <div className="overview-card__text">
-        {overviewParagraphs.map((paragraph, index) => (
-          <p key={`${index}-${paragraph.slice(0, 20)}`}>{paragraph}</p>
-        ))}
-      </div>
+      <RichText className="overview-card__text" text={overviewParagraphs.join("\n\n")} />
 
       {rationales.length > 0 && (
         <div className="overview-card__qa">
           {rationales.map((r) => (
             <div key={r.id} className="overview-card__entry">
               <p className="overview-card__q">{r.question}</p>
-              <p className="overview-card__a">{r.answer}</p>
+              <RichText className="overview-card__a" text={r.answer} />
             </div>
           ))}
         </div>

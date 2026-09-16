@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { askWhy, fetchFileContent, fetchRationales } from "./api";
 import type { FileContent, LineRationale } from "./types";
-import { stripMarkdown } from "./markdown";
+import { RichText } from "./markdown";
 import { highlightLines } from "./highlight";
 import { Spinner } from "./Spinner";
 import "./SourceViewer.css";
@@ -201,7 +201,7 @@ export function SourceViewer({ owner, name, path, onClose }: Props) {
                     {activeRationale.end_line !== activeRationale.start_line ? `–${activeRationale.end_line}` : ""}
                   </div>
                   <p className="rationale-thread__q">{activeRationale.question}</p>
-                  <p className="rationale-thread__a">{stripMarkdown(activeRationale.answer)}</p>
+                  <RichText className="rationale-thread__a" text={activeRationale.answer} />
                 </div>
               )}
 
