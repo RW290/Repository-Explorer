@@ -107,7 +107,7 @@
   padding: 6px 9px;
   border: 1px solid #282b38;
   border-radius: 5px;
-  content: "CLICK A NODE TO EXPLORE";
+  content: "CLICK TO OPEN · SCROLL TO ZOOM · DRAG TO MOVE";
   color: #686c7d;
   font-family: "DM Mono", monospace;
   font-size: .54rem;
@@ -831,3 +831,35 @@ html[data-theme="light"] .view-switch button { color: #788292; }
 html[data-theme="light"] .view-switch button:hover:not(:disabled):not(.active) { background: #f0effd; color: #44349e; }
 html[data-theme="light"] .view-switch button.active { background: linear-gradient(135deg, #7561df, #5b49c9); color: #fff; }
 html[data-theme="light"] .view-switch__key { border-color: #dcdfe8; color: #9aa3b1; }
+
+/* ---- Free camera over the folder view ---------------------------------- */
+.viewer--pannable { cursor: grab; touch-action: none; }
+.viewer--pannable.viewer--dragging { cursor: grabbing; user-select: none; }
+.viewer--pannable .world .node { touch-action: none; }
+/* While the reader is driving, the camera must follow the hand exactly; the
+   700ms ease is for navigation, and comes back the moment they let go of
+   their own view (recenter, or clicking into something). */
+.world--free { transition: none; }
+.viewer__recenter {
+  position: absolute;
+  right: 20px;
+  bottom: 60px;
+  z-index: 10;
+  padding: 7px 11px;
+  border: 1px solid #33364a;
+  border-radius: 8px;
+  background: rgba(17, 18, 26, .9);
+  color: #b6adff;
+  cursor: pointer;
+  font-family: "DM Mono", monospace;
+  font-size: .6rem;
+  letter-spacing: .04em;
+  backdrop-filter: blur(12px);
+}
+.viewer__recenter:hover { border-color: #7166c9; color: #fff; }
+html[data-theme="light"] .viewer__recenter { border-color: #e0e4ec; background: rgba(255,255,255,.92); color: #5d4ac3; box-shadow: 0 8px 24px rgba(44,62,92,.1); }
+html[data-theme="light"] .viewer__recenter:hover { border-color: #aaa0ed; color: #2f2480; }
+
+.overview-card--pending { mask-image: none; -webkit-mask-image: none; overflow: hidden; }
+.overview-card--pending .skeleton { height: 11px; }
+.file-rationale__pending { margin-top: 12px; }

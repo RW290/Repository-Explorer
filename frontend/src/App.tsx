@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { fetchFixture, pollAnalysis, startAnalysis } from "./api";
 import type { AnalysisProgress as Progress, Graph } from "./types";
 import { AnalysisProgress } from "./AnalysisProgress";
+import { ViewerSkeleton } from "./Skeleton";
 import { Spinner } from "./Spinner";
 import { ThemeToggle, type Theme } from "./ThemeToggle";
 import { Viewer } from "./Viewer";
+import "./Viewer.css";
 
 type Status = "idle" | "loading" | "error";
 
@@ -140,6 +142,32 @@ export function App() {
     );
   }
 
+  // Loading: draw the viewer's shape in placeholders rather than dimming the
+  // landing page behind a spinner — the reader sees what is about to appear
+  // and where, and the real viewer replaces it without a layout jump.
+  if (status === "loading") {
+    return (
+      <div className="viewer viewer--loading">
+        <ViewerSkeleton />
+        <div className="loading-card__box loading-card__box--floating" aria-live="polite">
+          {analyzing ? (
+            <>
+              <AnalysisProgress progress={progress} variant="card" fallbackLabel={stage || "Starting the analysis…"} />
+              <p className="loading-card__subtext">
+                The graph opens as soon as the structure is known — a few seconds — and fills in while the rest runs.
+              </p>
+            </>
+          ) : (
+            <>
+              <Spinner size="lg" label={stage || "Opening the repository…"} />
+              <p className="loading-card__subtext">Cached repositories open instantly.</p>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="landing">
       <div className="landing__glow landing__glow--one" />
@@ -183,11 +211,10 @@ export function App() {
                 placeholder="https://github.com/owner/repo"
                 autoComplete="off"
                 spellCheck={false}
-                disabled={status === "loading"}
               />
             </div>
-            <button className="landing__button" onClick={analyze} disabled={status === "loading" || !repoUrl.trim()}>
-              {status === "loading" ? <Spinner size="sm" /> : <>Analyze repo <span aria-hidden="true">→</span></>}
+            <button className="landing__button" onClick={analyze} disabled={!repoUrl.trim()}>
+              Analyze repo <span aria-hidden="true">→</span>
             </button>
           </div>
           <p className="landing__hint">
@@ -195,7 +222,7 @@ export function App() {
           </p>
         </div>
 
-        <button className="landing__fixture" onClick={loadFixture} disabled={status === "loading"}>
+        <button className="landing__fixture" onClick={loadFixture}>
           <span aria-hidden="true">✦</span> Try the interactive demo instead
         </button>
 
@@ -206,25 +233,6 @@ export function App() {
         </div>
       </main>
 
-      {status === "loading" && (
-        <div className="loading-card" aria-live="polite">
-          <div className="loading-card__box">
-            {analyzing ? (
-              <>
-                <AnalysisProgress progress={progress} variant="card" fallbackLabel={stage || "Starting the analysis…"} />
-                <p className="loading-card__subtext">
-                  The graph opens as soon as the structure is known — a few seconds — and fills in while the rest runs.
-                </p>
-              </>
-            ) : (
-              <>
-                <Spinner size="lg" label={stage || "Preparing your repository…"} />
-                <p className="loading-card__subtext">Cached repositories open instantly.</p>
-              </>
-            )}
-          </div>
-        </div>
-      )}
       {status === "error" && (
         <div className="landing__status landing__status--error" role="alert">
           <span aria-hidden="true">!</span>{error}

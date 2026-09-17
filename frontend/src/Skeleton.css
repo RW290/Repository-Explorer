@@ -1,0 +1,59 @@
+/* One shimmer for every placeholder. `background-attachment: fixed` makes
+   the highlight sweep across the whole screen as one band instead of each
+   block animating on its own clock. */
+.skeleton {
+  display: block;
+  height: 10px;
+  border-radius: 5px;
+  background: linear-gradient(100deg, rgba(255,255,255,.055) 30%, rgba(255,255,255,.15) 50%, rgba(255,255,255,.055) 70%);
+  background-size: 200vw 100%;
+  background-attachment: fixed;
+  animation: skeleton-sweep 1.7s linear infinite;
+}
+@keyframes skeleton-sweep { from { background-position: 100vw 0; } to { background-position: -100vw 0; } }
+html[data-theme="light"] .skeleton {
+  background-image: linear-gradient(100deg, rgba(71,85,105,.09) 30%, rgba(71,85,105,.2) 50%, rgba(71,85,105,.09) 70%);
+}
+@media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
+
+.skeleton-lines { display: flex; flex-direction: column; gap: 9px; }
+
+.code-skeleton { display: flex; flex-direction: column; gap: 11px; padding: 16px 10px; }
+.code-skeleton__line { display: flex; align-items: center; gap: 16px; height: 8px; }
+.code-skeleton__no { width: 22px; flex: none; margin-left: 12px; opacity: .6; }
+.code-skeleton .skeleton { height: 8px; }
+
+.map-skeleton { position: absolute; inset: 0; z-index: 2; display: grid; place-content: center; gap: 22px; pointer-events: none; }
+.map-skeleton__row { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 46px; padding: 0 40px; }
+.map-skeleton__group { display: flex; flex-direction: column; gap: 14px; width: 190px; padding: 16px 16px 20px; border: 1.5px dashed rgba(139,123,255,.22); border-radius: 14px; }
+.map-skeleton__title { width: 46%; height: 8px; margin: 0 auto 2px; }
+.map-skeleton__node { height: 46px; border-radius: 10px; }
+.map-skeleton__label { margin: 0; color: #8f93a6; font-size: .76rem; text-align: center; }
+html[data-theme="light"] .map-skeleton__group { border-color: rgba(101,81,213,.2); }
+html[data-theme="light"] .map-skeleton__label { color: #7d8796; }
+
+.viewer-skeleton { position: absolute; inset: 0; overflow: hidden; }
+.viewer-skeleton__topbar { display: flex; gap: 12px; padding: 18px 20px; }
+.viewer-skeleton__crumbs { width: 150px; height: 40px; border-radius: 10px; }
+.viewer-skeleton__switch { width: 210px; height: 40px; border-radius: 12px; }
+.viewer-skeleton__overview { display: flex; flex-direction: column; gap: 12px; width: min(1160px, calc(100vw - 48px)); margin: 8px auto 0; }
+.viewer-skeleton__kicker { width: 120px; height: 8px; }
+.viewer-skeleton__title { width: 240px; height: 26px; border-radius: 7px; margin-bottom: 4px; }
+.viewer-skeleton__grid { display: grid; grid-template-columns: repeat(3, 264px); gap: 46px 140px; justify-content: center; margin-top: 8vh; }
+.viewer-skeleton__card { display: flex; flex-direction: column; align-items: center; gap: 12px; height: 158px; padding: 24px 22px; border: 1px solid rgba(255,255,255,.07); border-radius: 14px; }
+.viewer-skeleton__card-kicker { width: 44px; height: 7px; }
+.viewer-skeleton__card-name { width: 56%; height: 16px; border-radius: 6px; }
+.viewer-skeleton__card-chips { width: 84%; height: 34px; border-radius: 7px; margin-top: 6px; }
+html[data-theme="light"] .viewer-skeleton__card { border-color: rgba(71,85,105,.12); background: rgba(255,255,255,.5); }
+@media (max-width: 900px) { .viewer-skeleton__grid { grid-template-columns: repeat(2, minmax(0, 220px)); gap: 28px; } }
+
+.source-skeleton { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 32px; background: rgba(5, 6, 9, .72); backdrop-filter: blur(6px); }
+.source-skeleton__modal { display: flex; flex-direction: column; width: min(1480px, 100%); height: min(940px, 100%); overflow: hidden; border: 1px solid #303240; border-radius: 14px; background: #101118; }
+.source-skeleton__header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid #22242d; }
+.source-skeleton__body { display: flex; flex: 1; min-height: 0; }
+.source-skeleton__body .code-skeleton { flex: 1; }
+.source-skeleton__bar { display: flex; flex-direction: column; gap: 28px; width: 380px; flex: none; padding: 26px 20px; border-left: 1px solid #22242d; }
+html[data-theme="light"] .source-skeleton { background: rgba(229, 232, 240, .66); }
+html[data-theme="light"] .source-skeleton__modal { border-color: #e0e4ec; background: #fff; }
+html[data-theme="light"] .source-skeleton__header, html[data-theme="light"] .source-skeleton__bar { border-color: #e8eaf1; }
+@media (max-width: 720px) { .source-skeleton { padding: 0; } .source-skeleton__bar { display: none; } }

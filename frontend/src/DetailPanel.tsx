@@ -30,7 +30,7 @@ interface Props {
   onAskAbout?: () => void;
 }
 
-function FlowList({
+export function FlowList({
   title,
   items,
   direction,
@@ -65,6 +65,42 @@ function FlowList({
   );
 }
 
+/** A node's PR history, oldest first. Stated and inferred rationale are
+ * styled differently on purpose: the reader should never have to wonder
+ * which one they are looking at. */
+export function AnnotationList({ annotations }: { annotations: Annotation[] }) {
+  const sorted = [...annotations].sort((a, b) => a.date.localeCompare(b.date));
+  if (sorted.length === 0) {
+    return <p className="detail-panel__empty">No historical annotations recorded for this node yet.</p>;
+  }
+  return (
+    <ul className="detail-panel__annotations">
+      {sorted.map((ann) => (
+        <li key={ann.id} className={`annotation annotation--${ann.confidence}`}>
+          <div className="annotation__meta">
+            <span className="annotation__ref">{ann.source_ref}</span>
+            <span className="annotation__date">{ann.date}</span>
+            <span className={`annotation__confidence annotation__confidence--${ann.confidence}`}>
+              {ann.confidence} confidence
+            </span>
+          </div>
+          <p className="annotation__diff">{ann.diff_summary}</p>
+          {ann.rationale_stated && (
+            <p className="annotation__rationale annotation__rationale--stated">
+              <strong>Stated:</strong> {ann.rationale_stated}
+            </p>
+          )}
+          {ann.rationale_inferred && (
+            <p className="annotation__rationale annotation__rationale--inferred">
+              <strong>Inferred:</strong> {ann.rationale_inferred}
+            </p>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function DetailPanel({
   node,
   annotations,
@@ -77,7 +113,6 @@ export function DetailPanel({
   onSelectComponent,
   onAskAbout,
 }: Props) {
-  const sorted = [...annotations].sort((a, b) => a.date.localeCompare(b.date));
   const [showFileRationale, setShowFileRationale] = useState(false);
 
   return (
@@ -155,34 +190,7 @@ export function DetailPanel({
       )}
 
       <h3>History</h3>
-      {sorted.length === 0 ? (
-        <p className="detail-panel__empty">No historical annotations recorded for this node yet.</p>
-      ) : (
-        <ul className="detail-panel__annotations">
-          {sorted.map((ann) => (
-            <li key={ann.id} className={`annotation annotation--${ann.confidence}`}>
-              <div className="annotation__meta">
-                <span className="annotation__ref">{ann.source_ref}</span>
-                <span className="annotation__date">{ann.date}</span>
-                <span className={`annotation__confidence annotation__confidence--${ann.confidence}`}>
-                  {ann.confidence} confidence
-                </span>
-              </div>
-              <p className="annotation__diff">{ann.diff_summary}</p>
-              {ann.rationale_stated && (
-                <p className="annotation__rationale annotation__rationale--stated">
-                  <strong>Stated:</strong> {ann.rationale_stated}
-                </p>
-              )}
-              {ann.rationale_inferred && (
-                <p className="annotation__rationale annotation__rationale--inferred">
-                  <strong>Inferred:</strong> {ann.rationale_inferred}
-                </p>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+      <AnnotationList annotations={annotations} />
         </>
       )}
     </aside>

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { askWhyFileExists, fetchFileRationales } from "./api";
 import type { FileRationale } from "./types";
 import { RichText } from "./markdown";
+import { SkeletonLines } from "./Skeleton";
 
 interface Props {
   owner: string;
@@ -42,7 +43,7 @@ export function FileRationalePanel({ owner, name, path }: Props) {
   return (
     <div className="file-rationale">
       {loading ? (
-        <p className="file-rationale__hint">Loading…</p>
+        <SkeletonLines lines={3} />
       ) : (
         <>
           {entries.length === 0 && (
@@ -63,6 +64,7 @@ export function FileRationalePanel({ owner, name, path }: Props) {
           <button className="file-rationale__submit" onClick={submit} disabled={asking}>
             {asking ? "Asking…" : "Ask"}
           </button>
+          {asking && <SkeletonLines lines={3} className="file-rationale__pending" />}
           {error && <p className="file-rationale__error">{error}</p>}
         </>
       )}

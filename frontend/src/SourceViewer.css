@@ -12,8 +12,9 @@
 .source-viewer {
   display: flex;
   flex-direction: column;
-  width: min(1100px, 100%);
-  height: min(760px, 100%);
+  /* Large: this is where a file is read, not a peek at it. */
+  width: min(1480px, 100%);
+  height: min(940px, 100%);
   overflow: hidden;
   border: 1px solid #303240;
   border-radius: 14px;
@@ -121,9 +122,9 @@
 .source-viewer__panel {
   display: flex;
   flex-direction: column;
-  width: 300px;
+  width: 380px;
   flex: none;
-  padding: 16px;
+  padding: 0;
   overflow-y: auto;
   border-left: 1px solid #22242d;
   background: #14151d;
@@ -471,3 +472,68 @@ html[data-theme="light"] .symbol-list__text { color: #687386; }
 @media (prefers-reduced-motion: reduce) {
   .source-explainer { animation: none; }
 }
+
+/* --- Side bar: Overview / Functions / Ask ------------------------------- */
+.source-bar__tabs {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  gap: 2px;
+  padding: 10px 12px 0;
+  border-bottom: 1px solid #22242d;
+  background: #14151d;
+}
+.source-bar__tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px 10px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: #868aa0;
+  cursor: pointer;
+  font: inherit;
+  font-size: .76rem;
+  font-weight: 600;
+}
+.source-bar__tabs button:hover { color: #e8e7f2; }
+.source-bar__tabs button.active { border-bottom-color: #8b7bff; color: #f0eff7; }
+.source-bar__count { padding: 1px 6px; border-radius: 999px; background: rgba(139,123,255,.16); color: #b6adff; font-family: "DM Mono", monospace; font-size: .56rem; }
+.source-bar__section { padding: 16px 18px 24px; }
+.source-bar__section h3 { margin: 22px 0 9px; color: #717587; font-family: "DM Mono", monospace; font-size: .6rem; letter-spacing: .1em; text-transform: uppercase; }
+.source-bar__summary { margin-top: 8px; color: #c4c6d2; font-size: .8rem; line-height: 1.65; }
+.source-bar__summary p { margin: 0; }
+.source-bar__summary p + p { margin-top: 9px; }
+.source-bar__pending { margin-top: 12px; }
+.source-bar__pending--row { margin-bottom: 18px; }
+.source-bar__flows { margin-top: 4px; }
+.source-bar__paths { margin: 0; padding: 0; list-style: none; }
+.source-bar__paths li { border-bottom: 1px solid #22242d; }
+.source-bar__paths button {
+  width: 100%;
+  padding: 7px 0;
+  border: none;
+  background: none;
+  color: #c7c9d3;
+  cursor: pointer;
+  font-family: "DM Mono", monospace;
+  font-size: .68rem;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.source-bar__paths button:hover { color: #c7c1ff; text-decoration: underline; text-underline-offset: 3px; }
+.rationale-list button.active { border-color: #7166c9; color: #f0eff7; }
+.source-viewer__code { position: relative; }
+
+html[data-theme="light"] .source-bar__tabs { border-bottom-color: #e8eaf1; background: #f7f8fb; }
+html[data-theme="light"] .source-bar__tabs button { color: #7a8494; }
+html[data-theme="light"] .source-bar__tabs button:hover { color: #273142; }
+html[data-theme="light"] .source-bar__tabs button.active { border-bottom-color: #6551d5; color: #273142; }
+html[data-theme="light"] .source-bar__count { background: rgba(101,81,213,.12); color: #5d4ac3; }
+html[data-theme="light"] .source-bar__section h3 { color: #8791a0; }
+html[data-theme="light"] .source-bar__summary { color: #4a5464; }
+html[data-theme="light"] .source-bar__paths li { border-bottom-color: #edf0f4; }
+html[data-theme="light"] .source-bar__paths button { color: #5b6676; }
+html[data-theme="light"] .source-bar__paths button:hover { color: #4f3eb7; }

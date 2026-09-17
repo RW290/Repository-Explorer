@@ -31,8 +31,11 @@ function toBlocks(text: string): Block[] {
   return blocks;
 }
 
-// Code spans first, so ** inside backticks stays literal.
-const INLINE = /(`[^`]+`)|(\*\*[^*]+\*\*)|(__[^_]+__)|(\*[^*\n]+\*)|(\[[^\]]+\]\([^)]*\))/g;
+// Code spans first, so ** inside backticks stays literal — and double-backtick
+// spans before single ones: models that have read a lot of reStructuredText
+// write ``None``, and pairing those backticks one at a time turns the prose
+// *between* two spans into code instead.
+const INLINE = /(``[^`]+``)|(`[^`]+`)|(\*\*[^*]+\*\*)|(__[^_]+__)|(\*[^*\n]+\*)|(\[[^\]]+\]\([^)]*\))/g;
 
 function inline(text: string, keyPrefix: string): ReactNode[] {
   const out: ReactNode[] = [];
@@ -43,7 +46,9 @@ function inline(text: string, keyPrefix: string): ReactNode[] {
     if (match.index > cursor) out.push(text.slice(cursor, match.index));
     const token = match[0];
     const key = `${keyPrefix}-${match.index}`;
-    if (token.startsWith("`")) {
+    if (token.startsWith("``")) {
+      out.push(<code className="rich__code" key={key}>{token.slice(2, -2)}</code>);
+    } else if (token.startsWith("`")) {
       out.push(<code className="rich__code" key={key}>{token.slice(1, -1)}</code>);
     } else if (token.startsWith("**") || token.startsWith("__")) {
       out.push(<strong key={key}>{token.slice(2, -2)}</strong>);

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Architecture, GraphNode } from "./types";
 import type { Theme } from "./ThemeToggle";
 import { categoryOf, compileMap, type Direction, type MapEdge, type MapModel, type MapNode } from "./mermaid";
-import { Spinner } from "./Spinner";
+import { MapSkeleton } from "./Skeleton";
 import { legendFor } from "./languages";
 import "./ArchitectureView.css";
 
@@ -94,14 +94,6 @@ const THEME_VARS: Record<Theme, Record<string, string>> = {
   },
 };
 
-// Trackpads report fractional pixel deltas and horizontal movement; a mouse
-// wheel reports chunky vertical-only steps. Two-finger scroll should pan and
-// a wheel should zoom, and a pinch always arrives with ctrlKey set.
-function isTrackpadScroll(e: WheelEvent): boolean {
-  if (e.ctrlKey || e.metaKey) return false;
-  if (e.deltaMode !== WheelEvent.DOM_DELTA_PIXEL) return false;
-  return Math.abs(e.deltaX) > 0 || Math.abs(e.deltaY) < 40;
-}
 
 function mermaidIdOf(el: Element): string | null {
   // Mermaid names each node element `[<renderId>-]flowchart-<ourId>-<n>`;
@@ -494,13 +486,13 @@ export function ArchitectureView({
     const container = containerRef.current;
     if (!container) return;
     const onWheel = (e: WheelEvent) => {
+      // Every wheel gesture zooms, at the cursor; moving around is done by
+      // dragging. Telling a mouse wheel from a two-finger trackpad scroll
+      // can't be done reliably — smooth-scrolling mice report the same small
+      // pixel deltas a trackpad does — and guessing wrong made the wheel pan
+      // on some hardware. A trackpad pinch arrives as a wheel event with
+      // ctrlKey set, at a finer scale, which is what the faster speed is for.
       e.preventDefault();
-      if (isTrackpadScroll(e)) {
-        untouched.current = false;
-        view.current = { ...view.current, x: view.current.x - e.deltaX, y: view.current.y - e.deltaY };
-        apply(false);
-        return;
-      }
       const speed = e.ctrlKey || e.metaKey ? PINCH_ZOOM_SPEED : MOUSE_WHEEL_ZOOM_SPEED;
       const delta = e.deltaMode === WheelEvent.DOM_DELTA_LINE ? e.deltaY * 16 : e.deltaY;
       zoomAt(e.clientX, e.clientY, Math.exp(-delta * speed), false);
@@ -606,11 +598,7 @@ export function ArchitectureView({
         <div ref={hostRef} className="arch__host" />
       </div>
 
-      {renderState === "rendering" && (
-        <div className="arch__status">
-          <Spinner size="sm" /> Drawing the map…
-        </div>
-      )}
+      {renderState === "rendering" && <MapSkeleton label="Drawing the map…" />}
       {renderState === "error" && (
         <div className="arch__status arch__status--error">Couldn't draw the map: {renderError}</div>
       )}
@@ -646,7 +634,7 @@ export function ArchitectureView({
         <span className="arch__legend-gap"><i className="arch__legend-line" />import-verified flow</span>
         <span><i className="arch__legend-line arch__legend-line--dashed" />inferred flow</span>
         {allImports && <span><i className="arch__legend-line arch__legend-line--faint" />other import</span>}
-        <span className="arch__legend-hint">drag to pan · scroll to zoom</span>
+        <span className="arch__legend-hint">drag to move · scroll or pinch to zoom</span>
       </div>
     </div>
   );

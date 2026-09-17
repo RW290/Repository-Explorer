@@ -252,13 +252,39 @@ explorer.
   with no click directives; node clicks are wired onto the rendered SVG.
 - **Folders** (`Viewer.tsx`, `layout.ts`) — an animated camera over the file
   graph: folders at the top with the project overview, a folder's files one
-  level in, a single file at the closest zoom.
+  level in.
 
-The **detail panel** shows a node's summary, dependencies and PR history
-(stated and inferred rationale styled differently, confidence visible at a
-glance), and opens the **source viewer**: syntax-highlighted code with a
-function explainer above each definition, a jump list of the file's
-functions, and highlight-to-ask on any span of code.
+**Moving around is the same in both**: the wheel (or a two-finger scroll)
+zooms at the cursor, a trackpad pinch zooms, and dragging moves. The wheel
+always zooms rather than sometimes panning, because a smooth-scrolling mouse
+and a trackpad send indistinguishable events. In the folder view this free
+camera sits on top of the animated one: the reader's own zoom and position
+hold until they navigate, then the camera eases to the new target, and
+"recenter" returns to it at any time. A drag that ends over a card is a
+move, not a click.
+
+**Clicking a file opens its source**, from the map or from a folder — there
+is no details step in between. The source viewer (`SourceViewer.tsx`) is the
+one place for everything about a file: syntax-highlighted code with a
+function explainer above each definition, and a side bar with three tabs.
+*Overview* has the summary, "why does this file exist?", the file's group
+and flows on the map, what it imports and what imports it (both are links,
+so reading can follow the import graph from file to file), and its PR
+history, with stated and inferred rationale styled differently and
+confidence visible at a glance. *Functions* lists every function with its
+explainer and jumps to it. *Ask why* is the highlight-to-ask thread;
+highlighting code switches to it. `Esc` closes. Folders and external
+systems, which have no source, get a details panel instead
+(`DetailPanel.tsx`), as does every node in the fixture demo.
+
+**Anything still loading is drawn as a skeleton** (`Skeleton.tsx`) —
+greyed, shimmering placeholders in the shape of what is coming: the whole
+viewer while a repository opens, the map while it is laid out or built, code
+lines while a file is fetched, function rows while explainers are written,
+cards and the project overview while a live analysis fills them in, and
+answer text while a question is out. A spinner says "wait"; a skeleton says
+what is about to appear and where, and keeps the layout from jumping when it
+does.
 
 Files are coloured by kind (`languages.ts`): a hue per language, quieter
 tones for docs and config, generated per theme so both light and dark stay

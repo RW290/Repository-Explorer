@@ -432,3 +432,13 @@ html[data-theme="light"] .theme-toggle {
 }
 html[data-theme="light"] .theme-toggle:hover { border-color: #aaa0ed; color: #4336a0; }
 html[data-theme="light"] .theme-toggle__icon { color: #6653d5; }
+/* The loading screen is the viewer's skeleton with the status card floating
+   over it (see App.tsx), not a scrim over the landing page. */
+.viewer--loading { cursor: progress; }
+.loading-card__box--floating {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 5;
+  transform: translate(-50%, -50%);
+}

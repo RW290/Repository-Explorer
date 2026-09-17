@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { askAboutArchitecture, fetchArchitectureRationales } from "./api";
 import type { ArchitectureRationale } from "./types";
 import { RichText } from "./markdown";
+import { SkeletonLines } from "./Skeleton";
 import "./ArchitectureAsk.css";
 
 /**
@@ -108,6 +109,7 @@ export function ArchitectureAsk({ owner, name, focus, onClearFocus, onShowFocus,
       </header>
 
       <div className="arch-ask__thread">
+        {!loaded && <SkeletonLines lines={4} />}
         {loaded && entries.length === 0 && !asking && (
           <p className="arch-ask__empty">Nothing asked about this architecture yet. Try one of the questions below.</p>
         )}
@@ -129,7 +131,7 @@ export function ArchitectureAsk({ owner, name, focus, onClearFocus, onShowFocus,
         {asking && (
           <article className="arch-ask__entry arch-ask__entry--pending">
             <p className="arch-ask__q">{asking}</p>
-            <p className="arch-ask__thinking"><span /><span /><span /></p>
+            <SkeletonLines lines={4} />
           </article>
         )}
         <div ref={threadEnd} />

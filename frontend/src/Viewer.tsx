@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { AnalysisProgress as Progress, Architecture, Graph, GraphNode } from "./types";
 import { AnalysisProgress } from "./AnalysisProgress";
 import { ArchitectureAsk, type AskFocus } from "./ArchitectureAsk";
@@ -7,6 +7,7 @@ import { buildArchitecture, parseRepoUrl } from "./api";
 import { DetailPanel, type ComponentSelection } from "./DetailPanel";
 import { labelOf, languageOf, legendFor, toneOf } from "./languages";
 import { ProjectOverview } from "./ProjectOverview";
+import { MapSkeleton, SkeletonLines, SourceViewerSkeleton } from "./Skeleton";
 import { Spinner } from "./Spinner";
 import { ThemeToggle, type Theme } from "./ThemeToggle";
 import "./Viewer.css";
@@ -200,6 +201,109 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
   const focusY = level === "repo" && hasOverviewCard ? viewportH * FOLDER_BAND_CENTER : viewportH / 2;
   const ty = focusY - target.y * scale;
 
+  // --- Free camera over the folder view -----------------------------------
+  // (tx, ty, scale) above is where navigation *aims* the camera, and it gets
+  // there by CSS transition. On top of that the reader can zoom with the
+  // wheel or a pinch and move by dragging, same as on the map: `free` holds
+  // their view while it differs from the aim, and any navigation clears it,
+  // so the camera animates to the new target as usual.
+  const [free, setFree] = useState<{ tx: number; ty: number; scale: number } | null>(null);
+  const viewerRef = useRef<HTMLDivElement>(null);
+  const camera = useRef({ tx, ty, scale });
+  camera.current = free ?? { tx, ty, scale };
+  const draggedRef = useRef(false);
+  const pendingFrame = useRef<number | null>(null);
+
+  useEffect(() => setFree(null), [level, activeFolderId, mode, selectedNodeId]);
+
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer) return;
+    // The canvas is the viewer's own background plus the world of cards;
+    // panels, bars and the map sit on top and keep their own scrolling.
+    const onCanvas = (target: EventTarget | null) =>
+      target instanceof Element && (target === viewer || Boolean(target.closest(".world")));
+
+    const commit = (next: { tx: number; ty: number; scale: number }) => {
+      camera.current = next;
+      if (pendingFrame.current !== null) return;
+      pendingFrame.current = requestAnimationFrame(() => {
+        pendingFrame.current = null;
+        setFree(camera.current);
+      });
+    };
+    const zoomAt = (clientX: number, clientY: number, factor: number) => {
+      const rect = viewer.getBoundingClientRect();
+      const px = clientX - rect.left;
+      const py = clientY - rect.top;
+      const current = camera.current;
+      const nextScale = Math.min(12, Math.max(0.15, current.scale * factor));
+      const ratio = nextScale / current.scale;
+      commit({ tx: px - (px - current.tx) * ratio, ty: py - (py - current.ty) * ratio, scale: nextScale });
+    };
+
+    const onWheel = (e: WheelEvent) => {
+      if (!onCanvas(e.target)) return;
+      e.preventDefault();
+      const delta = e.deltaMode === WheelEvent.DOM_DELTA_LINE ? e.deltaY * 16 : e.deltaY;
+      // A trackpad pinch is a wheel event with ctrlKey set, at a finer scale.
+      zoomAt(e.clientX, e.clientY, Math.exp(-delta * (e.ctrlKey || e.metaKey ? 0.01 : 0.0015)));
+    };
+
+    const pointers = new Map<number, { x: number; y: number }>();
+    let pinchDistance: number | null = null;
+    const onPointerDown = (e: PointerEvent) => {
+      if (!onCanvas(e.target) || (e.pointerType === "mouse" && e.button !== 0)) return;
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointers.size === 1) draggedRef.current = false;
+    };
+    const onPointerMove = (e: PointerEvent) => {
+      const previous = pointers.get(e.pointerId);
+      if (!previous) return;
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointers.size === 2) {
+        const [a, b] = [...pointers.values()];
+        const distance = Math.hypot(a.x - b.x, a.y - b.y);
+        if (pinchDistance) zoomAt((a.x + b.x) / 2, (a.y + b.y) / 2, distance / pinchDistance);
+        pinchDistance = distance;
+        draggedRef.current = true;
+        return;
+      }
+      const dx = e.clientX - previous.x;
+      const dy = e.clientY - previous.y;
+      if (!draggedRef.current && Math.hypot(dx, dy) < 4) {
+        pointers.set(e.pointerId, previous); // keep measuring from the press
+        return;
+      }
+      draggedRef.current = true;
+      viewer.classList.add("viewer--dragging");
+      commit({ ...camera.current, tx: camera.current.tx + dx, ty: camera.current.ty + dy });
+    };
+    const onPointerUp = (e: PointerEvent) => {
+      pointers.delete(e.pointerId);
+      if (pointers.size < 2) pinchDistance = null;
+      if (pointers.size === 0) viewer.classList.remove("viewer--dragging");
+    };
+
+    viewer.addEventListener("wheel", onWheel, { passive: false });
+    viewer.addEventListener("pointerdown", onPointerDown);
+    // On window, not the viewer: a drag keeps tracking outside it, without
+    // pointer capture — capture would retarget the click that follows a
+    // press-and-release, and the cards rely on that click.
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
+    return () => {
+      viewer.removeEventListener("wheel", onWheel);
+      viewer.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
+      if (pendingFrame.current !== null) cancelAnimationFrame(pendingFrame.current);
+      pendingFrame.current = null;
+    };
+  }, []);
+
   const showMap = mode === "map" && level === "repo";
 
   function isVisible(node: GraphNode): boolean {
@@ -209,13 +313,21 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
   }
 
   function handleNodeClick(node: GraphNode) {
+    // The release at the end of a drag lands as a click on whatever card is
+    // under the pointer; that was a pan, not a choice.
+    if (draggedRef.current) return;
     if (level === "repo" && node.type === "folder") {
       setActiveFolderId(node.id);
       setLevel("folder");
       setSelectedNodeId(node.id);
     } else if (node.parent === activeFolderId) {
       setSelectedNodeId(node.id);
-      setLevel("file");
+      // A file's source is the destination, not a step beyond a details
+      // panel: open it straight away, with everything about the file in its
+      // side bar. Only the fixture demo (no repository to fetch source from)
+      // falls back to zooming in on the card with the panel beside it.
+      if (node.type === "file" && repo) setViewingSource(true);
+      else setLevel("file");
     }
   }
 
@@ -253,7 +365,9 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
     setSelectedGroupId(null);
     setSelectedComponentId(id);
     setSelectedNodeId(isExternal ? null : id);
-    setViewingSource(false);
+    // Files open straight into their source; folders and external systems
+    // have none, so they get the details panel.
+    setViewingSource(Boolean(repo) && !isExternal && byId.get(id)?.type === "file");
   }
 
   /** A click on one of the map's group boxes: select that section and open
@@ -323,7 +437,10 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
     } else {
       setActiveFolderId(node.parent);
       setSelectedNodeId(node.id);
-      setLevel("file");
+      // Land in the file's folder with its card highlighted. Its source is a
+      // click away, and is not reopened here: arriving from the map usually
+      // means the reader has just closed it.
+      setLevel(repo ? "folder" : "file");
     }
   }
 
@@ -359,7 +476,34 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
     };
   }, [architecture, selectedComponentId, byId]);
 
-  const panelOpen = Boolean(selectedNode || selection?.external);
+  // The details panel is for what has no source view of its own: folders,
+  // external systems, and every node of the fixture demo. A repository file
+  // shows all of this in the source viewer's side bar instead.
+  const fileHasSourceView = Boolean(repo && selectedNode?.type === "file");
+  const panelOpen = Boolean((selectedNode && !fileHasSourceView) || selection?.external);
+  const dependents = useMemo(
+    () => (selectedNodeId ? graph.nodes.filter((n) => n.dependencies.includes(selectedNodeId)).map((n) => n.id) : []),
+    [graph.nodes, selectedNodeId],
+  );
+
+  /** A path link inside the source viewer: follow the import graph to
+   * another file without leaving. On the map, that also moves the selection. */
+  function navigateTo(id: string) {
+    const target = byId.get(id);
+    if (!target) {
+      if (id.startsWith("ext:")) selectComponent(id);
+      return;
+    }
+    if (showMap) {
+      const onMap = architecture?.nodes.some((n) => n.id === id);
+      setSelectedComponentId(onMap ? id : null);
+    } else if (target.parent && target.parent !== activeFolderId) {
+      setActiveFolderId(target.parent);
+      setLevel("folder");
+    }
+    setSelectedNodeId(id);
+    setViewingSource(target.type === "file");
+  }
 
   // What "this" means in an architecture question: the selected node, else
   // the selected section, else nothing (the whole map).
@@ -421,7 +565,7 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
   });
 
   return (
-    <div className="viewer">
+    <div className={`viewer ${showMap ? "" : "viewer--pannable"}`} ref={viewerRef}>
       <div className={`viewer__topbar ${panelOpen ? "viewer__topbar--panel-open" : ""}`}>
       <div className="breadcrumbs">
         <button onClick={onBack} title="Back to repo picker">
@@ -516,6 +660,11 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
       <div className={`viewer__tools ${panelOpen ? "viewer__tools--panel-open" : ""}`}>
         <ThemeToggle theme={theme} onToggle={onToggleTheme} />
       </div>
+      {!showMap && free && (
+        <button className="viewer__recenter" onClick={() => setFree(null)} title="Return the camera to where navigation put it">
+          ⤢ recenter
+        </button>
+      )}
       {!showMap && (
         <div className="viewer__legend" aria-label="Node color legend">
           <span><i className="viewer__legend-swatch viewer__legend-swatch--folder" />Folders</span>
@@ -527,7 +676,7 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
       )}
 
       {showMap && architecture && (
-        <Suspense fallback={null}>
+        <Suspense fallback={<MapSkeleton />}>
           <div
             className={`arch-frame ${panelOpen ? "arch-frame--panel-open" : ""} ${
               askOpen && repo ? "arch-frame--ask-open" : ""
@@ -545,6 +694,7 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
           </div>
         </Suspense>
       )}
+      {showMap && !architecture && mapStatus === "loading" && <MapSkeleton />}
       {showMap && !architecture && (
         <div className="arch-placeholder">
           {mapStatus === "loading" ? (
@@ -577,9 +727,9 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
       )}
 
       <div
-        className="world"
+        className={`world ${free ? "world--free" : ""}`}
         style={{
-          transform: `translate(${tx}px, ${ty}px) scale(${scale})`,
+          transform: `translate(${(free ?? { tx }).tx}px, ${(free ?? { ty }).ty}px) scale(${(free ?? { scale }).scale})`,
           visibility: showMap ? "hidden" : "visible",
         }}
       >
@@ -665,11 +815,26 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
       )}
 
       {viewingSource && repo && selectedNode && (
-        <Suspense fallback={null}>
+        <Suspense
+          fallback={<SourceViewerSkeleton />}
+        >
           <SourceViewer
             owner={repo.owner}
             name={repo.name}
-            path={selectedNode.id}
+            node={selectedNode}
+            annotations={selectedAnnotations}
+            dependents={dependents}
+            selection={showMap ? selection : undefined}
+            onNavigate={navigateTo}
+            onAskAbout={
+              showMap && selection
+                ? () => {
+                    setViewingSource(false);
+                    setShowOverview(false);
+                    setAskOpen(true);
+                  }
+                : undefined
+            }
             onClose={() => setViewingSource(false)}
           />
         </Suspense>
@@ -688,6 +853,13 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
 
       {live && !viewingSource && <AnalysisProgress progress={live} variant="hud" compact={level !== "repo"} />}
 
+      {live && repo && !graph.overview && level === "repo" && !showMap && (
+        <div className="overview-card overview-card--pending" aria-label="Project overview is being written">
+          <div className="overview-card__kind">Project overview</div>
+          <h2 className="overview-card__title">{repo.name}</h2>
+          <SkeletonLines lines={5} />
+        </div>
+      )}
       {hasOverviewCard && level === "repo" && !showMap && (
         <ProjectOverview owner={repo!.owner} name={repo!.name} overview={graph.overview} />
       )}
