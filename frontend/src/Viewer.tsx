@@ -249,6 +249,43 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
     setViewingSource(false);
   }
 
+  /** Switch to the map from anywhere, keeping the reader's place: whatever
+   * file or folder they were on is selected on the map if it's a member
+   * (or, for a file that isn't, its folder if that is). */
+  function goToMap() {
+    if (mapStatus === "pending") return;
+    const memberIds = new Set((architecture?.nodes ?? []).map((n) => n.id));
+    const current = selectedNodeId ? byId.get(selectedNodeId) : undefined;
+    const onMap = current
+      ? memberIds.has(current.id)
+        ? current.id
+        : current.parent && memberIds.has(current.parent)
+          ? current.parent
+          : null
+      : null;
+    setMode("map");
+    setLevel("repo");
+    setActiveFolderId(null);
+    setViewingSource(false);
+    setSelectedComponentId(onMap);
+    setSelectedNodeId(onMap);
+  }
+
+  /** Switch to the folder explorer from the map. With a file or folder
+   * selected on the map, land on that same node; otherwise the folder grid. */
+  function goToFolders() {
+    setShowOverview(false);
+    setMode("folders");
+    if (!showMap) return;
+    const current = selectedNodeId ? byId.get(selectedNodeId) : undefined;
+    if (current) {
+      openInExplorer(current);
+    } else {
+      setSelectedComponentId(null);
+      setSelectedNodeId(null);
+    }
+  }
+
   /** Jump from a map component into the zoomable explorer at its file or
    * folder. The mode stays "map", so the repo crumb leads back here. */
   function openInExplorer(node: GraphNode) {
@@ -326,8 +363,26 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
 
   const canShowMap = mapStatus !== "unavailable";
 
+  // "M" flips between the two views from anywhere, unless the reader is
+  // typing a question or reading source.
+  useEffect(() => {
+    if (!canShowMap) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== "m" || e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+      if (viewingSource) return;
+      e.preventDefault();
+      if (showMap) goToFolders();
+      else goToMap();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
   return (
     <div className="viewer">
+      <div className={`viewer__topbar ${panelOpen ? "viewer__topbar--panel-open" : ""}`}>
       <div className="breadcrumbs">
         <button onClick={onBack} title="Back to repo picker">
           ←
@@ -358,37 +413,6 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
             </button>
           </>
         )}
-        {canShowMap && level === "repo" && (
-          <div className="mode-switch" role="tablist" aria-label="Repo view">
-            <button
-              role="tab"
-              aria-selected={mode === "map"}
-              className={mode === "map" ? "active" : ""}
-              disabled={mapStatus === "pending"}
-              onClick={() => {
-                setMode("map");
-                setSelectedNodeId(null);
-              }}
-              title={mapStatus === "pending" ? "Built last — ready when the analysis finishes" : "Semantic architecture map"}
-            >
-              map{mapStatus === "pending" ? " …" : ""}
-            </button>
-            <button
-              role="tab"
-              aria-selected={mode === "folders"}
-              className={mode === "folders" ? "active" : ""}
-              onClick={() => {
-                setMode("folders");
-                setSelectedComponentId(null);
-                setSelectedNodeId(null);
-                setShowOverview(false);
-              }}
-              title="Folder-by-folder file grid"
-            >
-              folders
-            </button>
-          </div>
-        )}
         {showMap && hasOverviewCard && (
           <button
             className={`breadcrumbs__overview ${showOverview ? "active" : ""}`}
@@ -398,6 +422,41 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
             ◎ overview
           </button>
         )}
+      </div>
+      {canShowMap && (
+        <div
+          className="view-switch"
+          role="tablist"
+          aria-label="Switch between the architecture map and the folder explorer"
+        >
+          <button
+            role="tab"
+            aria-selected={showMap}
+            className={showMap ? "active" : ""}
+            disabled={mapStatus === "pending"}
+            onClick={goToMap}
+            title={
+              mapStatus === "pending"
+                ? "The map is built last — it unlocks when the analysis finishes"
+                : "Architecture map: files grouped into semantic layers, with the flows between them (M)"
+            }
+          >
+            <span className="view-switch__icon" aria-hidden="true">◈</span>
+            Map{mapStatus === "pending" ? " …" : ""}
+          </button>
+          <button
+            role="tab"
+            aria-selected={!showMap}
+            className={!showMap ? "active" : ""}
+            onClick={goToFolders}
+            title="Folder explorer: every folder and file, zoom in level by level (M)"
+          >
+            <span className="view-switch__icon" aria-hidden="true">▦</span>
+            Folders
+          </button>
+          <kbd className="view-switch__key" aria-hidden="true">M</kbd>
+        </div>
+      )}
       </div>
       <div className={`viewer__tools ${panelOpen ? "viewer__tools--panel-open" : ""}`}>
         <ThemeToggle theme={theme} onToggle={onToggleTheme} />

@@ -756,3 +756,78 @@ html[data-theme="light"] .detail-panel__summary--pending { color: #7d8796; }
 /* The progress HUD takes the bottom centre; keep the legend clear of it. */
 @media (max-width: 1100px) { .viewer:has(.progress--hud) .viewer__legend { display: none; } }
 @media (prefers-reduced-motion: reduce) { .node__summary--pending span { animation: none; } }
+
+/* ---- Top bar: breadcrumbs + the Map / Folders switch --------------------
+   The switch is its own prominent control, present at every level — not a
+   small toggle inside the breadcrumbs that only existed at the top level.
+   Both sit in one flex row so a long breadcrumb trail pushes the switch along
+   (and wraps it underneath on a narrow screen) instead of colliding with it. */
+.viewer__topbar {
+  position: absolute;
+  top: 16px;
+  left: 20px;
+  z-index: 12;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+  /* Leave the theme toggle's corner alone. */
+  max-width: calc(100vw - 170px);
+  pointer-events: none;
+}
+.viewer__topbar--panel-open { max-width: calc(100vw - 360px - 170px); }
+.viewer__topbar > * { pointer-events: auto; }
+.viewer__topbar .breadcrumbs { position: static; }
+
+.view-switch {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px;
+  border: 1px solid #33364a;
+  border-radius: 12px;
+  background: rgba(17, 18, 26, .92);
+  box-shadow: 0 10px 28px rgba(0,0,0,.25);
+  backdrop-filter: blur(12px);
+}
+.view-switch button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: #8f93a6;
+  cursor: pointer;
+  font: inherit;
+  font-size: .8rem;
+  font-weight: 700;
+  transition: background 160ms ease, color 160ms ease;
+}
+.view-switch button:hover:not(:disabled):not(.active) { background: rgba(255,255,255,.05); color: #e4dfff; }
+.view-switch button.active { background: linear-gradient(135deg, #8b7bff, #6f5de0); color: #fff; box-shadow: 0 4px 12px rgba(111,93,224,.35); }
+.view-switch button:disabled { cursor: default; opacity: .5; }
+.view-switch__icon { font-size: .9rem; line-height: 1; }
+.view-switch__key {
+  margin: 0 6px 0 4px;
+  padding: 2px 6px;
+  border: 1px solid #33364a;
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  color: #6f7385;
+  font-family: "DM Mono", monospace;
+  font-size: .56rem;
+}
+@media (max-width: 620px) {
+  /* Narrow enough that the first row clears the theme toggle in the corner;
+     the switch wraps onto its own row beneath the breadcrumbs. */
+  .viewer__topbar, .viewer__topbar--panel-open { top: 14px; left: 14px; max-width: calc(100vw - 130px); }
+  .view-switch button { padding: 7px 12px; font-size: .74rem; }
+  .view-switch__key { display: none; }
+}
+html[data-theme="light"] .view-switch { border-color: #e0e4ec; background: rgba(255,255,255,.94); box-shadow: 0 8px 24px rgba(44,62,92,.12); }
+html[data-theme="light"] .view-switch button { color: #788292; }
+html[data-theme="light"] .view-switch button:hover:not(:disabled):not(.active) { background: #f0effd; color: #44349e; }
+html[data-theme="light"] .view-switch button.active { background: linear-gradient(135deg, #7561df, #5b49c9); color: #fff; }
+html[data-theme="light"] .view-switch__key { border-color: #dcdfe8; color: #9aa3b1; }

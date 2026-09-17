@@ -208,7 +208,10 @@ tried, and would mostly show up as missing edges.
   - All three rationale POST endpoints persist their answer to
     `backend/.cache/` (see `backend/app/rationale_store.py`), shared with
     every future visitor to that repo rather than kept per-browser.
-- `frontend/` — React + TypeScript + Vite viewer. The repo level has two
+- `frontend/` — React + TypeScript + Vite viewer. A **Map / Folders**
+  switch sits beside the breadcrumbs at every level (or press `M`), and it
+  keeps your place: from a file, Map selects that file on the map; from a
+  selected map node, Folders lands on that node in the explorer. The two
   modes: **map** (default when available) renders the architecture map as
   a Mermaid flowchart laid out by ELK on a freely pannable/zoomable canvas
   (drag to pan, wheel or pinch to zoom, fit/zoom controls; the compiler is
