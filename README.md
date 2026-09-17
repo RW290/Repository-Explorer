@@ -146,11 +146,23 @@ generation and every later visitor reads the stored set.
 
 ### Ask why — `backend/app/explain.py`
 
-Three on-demand questions, each answered once and then shared with everyone
-who opens that repo: about a highlighted range of code, about why a whole
-file exists (grounded in what it depends on and what depends on it), and
-follow-ups about the project overview. Stored alongside the function
-explainers by `rationale_store.py`.
+Four kinds of on-demand question, each answered once and then shared with
+everyone who opens that repo (stored by `rationale_store.py`, alongside the
+function explainers):
+
+- about a highlighted range of code;
+- about why a whole file exists, grounded in what it depends on and what
+  depends on it;
+- follow-ups about the project overview;
+- about the **architecture map**. The model is handed the map itself —
+  each group with its member files and what they do, the external systems,
+  and every flow with whether imports back it — plus whatever the reader has
+  selected, so "explain this section" has a referent and the answer is about
+  this diagram rather than architecture in general. A general concept
+  question (a pattern, a protocol, a term) gets the concept explained and
+  then located in this repo; a question resting on a mix-up gets the
+  distinction untangled rather than played along with; an answer that leans
+  on an inferred flow says so.
 
 ### One audience — `backend/app/audience.py`
 
@@ -229,7 +241,12 @@ explorer.
   viewport larger is kept. Each node shows its name, folder path and the
   first line of its summary; external systems are greyed hexagons. Clicking
   a node opens the detail panel with its group and its in/out flows, each
-  tagged import-verified or inferred. An "all imports" toggle overlays every
+  tagged import-verified or inferred. **Ask** (in the top bar, or "Ask about
+  this on the map" in the detail panel) opens a question panel beside the
+  map, scoped to whatever is selected: a file, a group box — the groups are
+  clickable, and clicking one opens the panel on it — or the whole map.
+  The map moves aside for the panel and refits, unless the reader has
+  already zoomed or panned, in which case their view is kept. An "all imports" toggle overlays every
   other real import between the map's nodes, so the model's chosen flows can
   be checked against the whole truth. Mermaid runs in strict security mode
   with no click directives; node clicks are wired onto the rendered SVG.
@@ -297,7 +314,7 @@ One `Graph` per repository (`backend/app/models.py`, mirrored in
 | `POST /api/repos/{owner}/{name}/architecture` | Build the map for a cached graph that has none |
 | `POST /api/repos/{owner}/{name}/symbol-explainers` `{path}` | Function explainers for a file; generated on first request, stored after |
 | `GET /api/repos/{owner}/{name}/file?path=…` | A file's source, fetched from GitHub on demand |
-| `GET`/`POST …/rationales`, `…/file-rationales`, `…/project-rationales` | Read stored answers, or ask a question about a code range, a file, or the project |
+| `GET`/`POST …/rationales`, `…/file-rationales`, `…/project-rationales`, `…/architecture-rationales` | Read stored answers, or ask a question about a code range, a file, the project, or the architecture map (optionally focused on a group or node) |
 
 In production the same FastAPI process also serves the built frontend.
 

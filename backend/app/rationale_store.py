@@ -1,4 +1,4 @@
-"""Persisted, shared rationale annotations, per repo — three kinds, one
+"""Persisted, shared rationale annotations, per repo — several kinds, one
 storage shape.
 
 Separate from pipeline.py's analysis cache (nodes/PR annotations, written
@@ -68,6 +68,14 @@ def load_project_rationales(owner: str, name: str) -> list[dict]:
 
 def add_project_rationale(owner: str, name: str, entry: dict) -> None:
     _add(owner, name, "project_rationales", entry)
+
+
+def load_architecture_rationales(owner: str, name: str) -> list[dict]:
+    return _load(owner, name, "architecture_rationales", None)
+
+
+def add_architecture_rationale(owner: str, name: str, entry: dict) -> None:
+    _add(owner, name, "architecture_rationales", entry)
 
 
 def load_symbol_explainers(owner: str, name: str, path: str | None = None) -> list[dict]:

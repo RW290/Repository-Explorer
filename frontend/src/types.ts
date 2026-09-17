@@ -96,6 +96,18 @@ export interface FileRationale {
   created_at: number;
 }
 
+// A question asked about the architecture map, optionally focused on one
+// group or node ("explain this section"). Shared with everyone on the repo.
+export interface ArchitectureRationale {
+  id: string;
+  question: string;
+  answer: string;
+  focus_kind: "group" | "node" | null;
+  focus_id: string | null;
+  focus_label: string | null;
+  created_at: number;
+}
+
 export interface ProjectRationale {
   id: string;
   question: string;

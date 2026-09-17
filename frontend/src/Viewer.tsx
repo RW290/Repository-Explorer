@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { AnalysisProgress as Progress, Architecture, Graph, GraphNode } from "./types";
 import { AnalysisProgress } from "./AnalysisProgress";
+import { ArchitectureAsk, type AskFocus } from "./ArchitectureAsk";
 import { computeLayout, fitScale, repoViewCenter } from "./layout";
 import { buildArchitecture, parseRepoUrl } from "./api";
 import { DetailPanel, type ComponentSelection } from "./DetailPanel";
@@ -118,6 +119,10 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
   const [selectedComponentId, setSelectedComponentId] = useState<string | null>(null);
   const [viewingSource, setViewingSource] = useState(false);
   const [showOverview, setShowOverview] = useState(false);
+  // The architecture Ask panel, and the map section (group box) it may be
+  // focused on. A selected node takes precedence over a selected group.
+  const [askOpen, setAskOpen] = useState(false);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
 
   const viewportW = typeof window !== "undefined" ? window.innerWidth : 1200;
   const viewportH = typeof window !== "undefined" ? window.innerHeight : 800;
@@ -219,6 +224,7 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
     setActiveFolderId(null);
     setSelectedNodeId(null);
     setSelectedComponentId(null);
+    setSelectedGroupId(null);
     setViewingSource(false);
   }
 
@@ -244,9 +250,28 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
   function selectComponent(id: string) {
     const isExternal = id.startsWith("ext:");
     if (!isExternal && !byId.has(id)) return;
+    setSelectedGroupId(null);
     setSelectedComponentId(id);
     setSelectedNodeId(isExternal ? null : id);
     setViewingSource(false);
+  }
+
+  /** A click on one of the map's group boxes: select that section and open
+   * the Ask panel on it — a section has no file to show, so asking about it
+   * is what selecting it is for. */
+  function selectGroup(groupId: string) {
+    setSelectedGroupId(groupId);
+    setSelectedComponentId(null);
+    setSelectedNodeId(null);
+    setViewingSource(false);
+    setShowOverview(false);
+    setAskOpen(true);
+  }
+
+  function clearMapSelection() {
+    setSelectedGroupId(null);
+    setSelectedComponentId(null);
+    setSelectedNodeId(null);
   }
 
   /** Switch to the map from anywhere, keeping the reader's place: whatever
@@ -336,6 +361,21 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
 
   const panelOpen = Boolean(selectedNode || selection?.external);
 
+  // What "this" means in an architecture question: the selected node, else
+  // the selected section, else nothing (the whole map).
+  const askFocus = useMemo<AskFocus | null>(() => {
+    if (!architecture) return null;
+    if (selectedComponentId) {
+      const member = architecture.nodes.find((n) => n.id === selectedComponentId);
+      if (member) return { kind: "node", id: member.id, label: member.external ? member.label ?? member.id : member.id };
+    }
+    if (selectedGroupId) {
+      const group = architecture.groups.find((g) => g.id === selectedGroupId);
+      if (group) return { kind: "group", id: group.id, label: group.label };
+    }
+    return null;
+  }, [architecture, selectedComponentId, selectedGroupId]);
+
   function nodeCategory(node: GraphNode): "folder" | "code" | "other" {
     if (node.type === "folder") return "folder";
     return languageOf(node.id) ? "code" : "other";
@@ -413,10 +453,25 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
             </button>
           </>
         )}
+        {showMap && repo && architecture && (
+          <button
+            className={`breadcrumbs__ask ${askOpen ? "active" : ""}`}
+            onClick={() => {
+              setAskOpen((v) => !v);
+              setShowOverview(false);
+            }}
+            title="Ask a question about this architecture"
+          >
+            ✦ ask
+          </button>
+        )}
         {showMap && hasOverviewCard && (
           <button
             className={`breadcrumbs__overview ${showOverview ? "active" : ""}`}
-            onClick={() => setShowOverview((v) => !v)}
+            onClick={() => {
+              setShowOverview((v) => !v);
+              setAskOpen(false);
+            }}
             title="Project overview"
           >
             ◎ overview
@@ -473,13 +528,19 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
 
       {showMap && architecture && (
         <Suspense fallback={null}>
-          <div className={`arch-frame ${panelOpen ? "arch-frame--panel-open" : ""}`}>
+          <div
+            className={`arch-frame ${panelOpen ? "arch-frame--panel-open" : ""} ${
+              askOpen && repo ? "arch-frame--ask-open" : ""
+            }`}
+          >
             <ArchitectureView
               architecture={architecture}
               nodes={graph.nodes}
               theme={theme}
               selectedId={selectedComponentId}
               onSelect={selectComponent}
+              selectedGroupId={selectedGroupId}
+              onSelectGroup={repo ? selectGroup : undefined}
             />
           </div>
         </Suspense>
@@ -576,6 +637,14 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
           selection={selection}
           onSelectComponent={selectComponent}
           onOpenInExplorer={selectedNode && selection ? () => openInExplorer(selectedNode) : undefined}
+          onAskAbout={
+            showMap && repo && selection
+              ? () => {
+                  setShowOverview(false);
+                  setAskOpen(true);
+                }
+              : undefined
+          }
           // Dismissing the panel has to step the camera out too: at file
           // level it's aimed at the very node being deselected, so leaving
           // the level alone would point it at nothing.
@@ -604,6 +673,17 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
             onClose={() => setViewingSource(false)}
           />
         </Suspense>
+      )}
+
+      {showMap && askOpen && repo && architecture && (
+        <ArchitectureAsk
+          owner={repo.owner}
+          name={repo.name}
+          focus={askFocus}
+          onClearFocus={clearMapSelection}
+          onShowFocus={(kind, id) => (kind === "group" ? selectGroup(id) : selectComponent(id))}
+          onClose={() => setAskOpen(false)}
+        />
       )}
 
       {live && !viewingSource && <AnalysisProgress progress={live} variant="hud" compact={level !== "repo"} />}

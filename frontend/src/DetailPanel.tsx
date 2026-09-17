@@ -26,6 +26,8 @@ interface Props {
   analyzing?: boolean;
   onOpenInExplorer?: () => void;
   onSelectComponent?: (id: string) => void;
+  /** On the map: open the architecture Ask panel focused on this node. */
+  onAskAbout?: () => void;
 }
 
 function FlowList({
@@ -73,6 +75,7 @@ export function DetailPanel({
   analyzing = false,
   onOpenInExplorer,
   onSelectComponent,
+  onAskAbout,
 }: Props) {
   const sorted = [...annotations].sort((a, b) => a.date.localeCompare(b.date));
   const [showFileRationale, setShowFileRationale] = useState(false);
@@ -104,6 +107,11 @@ export function DetailPanel({
         </>
       )}
       <div className="detail-panel__actions">
+        {onAskAbout && (
+          <button className="detail-panel__view-source" onClick={onAskAbout}>
+            ✦ Ask about this on the map
+          </button>
+        )}
         {onOpenInExplorer && (
           <button className="detail-panel__view-source" onClick={onOpenInExplorer}>
             Open in explorer <span aria-hidden="true">→</span>

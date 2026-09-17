@@ -1,6 +1,7 @@
 import type {
   AnalysisStatus,
   Architecture,
+  ArchitectureRationale,
   FileContent,
   FileRationale,
   Graph,
@@ -170,6 +171,29 @@ export async function ensureSymbolExplainers(owner: string, name: string, path: 
   // Same stale-backend signature as buildArchitecture above.
   if (res.status === 405) {
     throw new Error("The backend is running an older version without function explainers. Restart or redeploy it.");
+  }
+  return asJson(res);
+}
+
+export async function fetchArchitectureRationales(owner: string, name: string): Promise<ArchitectureRationale[]> {
+  return asJson(await fetch(`${API_BASE}/api/repos/${owner}/${name}/architecture-rationales`));
+}
+
+// Ask about the architecture map. `focus` is what the reader has selected on
+// the map, which is what "this section" in their question refers to.
+export async function askAboutArchitecture(
+  owner: string,
+  name: string,
+  question?: string,
+  focus?: { kind: "group" | "node"; id: string } | null,
+): Promise<ArchitectureRationale> {
+  const res = await fetch(`${API_BASE}/api/repos/${owner}/${name}/architecture-rationales`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question: question || null, focus_kind: focus?.kind ?? null, focus_id: focus?.id ?? null }),
+  });
+  if (res.status === 405) {
+    throw new Error("The backend is running an older version without architecture questions. Restart or redeploy it.");
   }
   return asJson(res);
 }

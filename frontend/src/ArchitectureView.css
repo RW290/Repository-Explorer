@@ -136,6 +136,10 @@ html[data-theme="light"] .arch svg g.arch-node--selected > :not(.label) {
 .arch__legend-gap { margin-left: 4px; padding-left: 12px; border-left: 1px solid #292b39; }
 .arch__legend-hint { color: #5d6072; }
 
+/* Set by the view when its own width (not the window's) is tight. */
+.arch--narrow .arch__legend { right: auto; left: 20px; bottom: 66px; max-width: calc(100% - 40px); flex-wrap: wrap; row-gap: 5px; }
+.arch--narrow .arch__legend-hint { display: none; }
+
 @media (max-width: 620px) {
   .arch__legend { flex-wrap: wrap; justify-content: flex-end; max-width: 60vw; }
   /* The detail panel docks to the bottom at this width. */

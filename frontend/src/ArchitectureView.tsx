@@ -26,6 +26,9 @@ interface Props {
   theme: Theme;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  /** A group box (one of the map's semantic sections) was clicked. */
+  selectedGroupId?: string | null;
+  onSelectGroup?: (groupId: string) => void;
 }
 
 interface View {
@@ -115,6 +118,13 @@ function firstSentence(summary: string): string | null {
   if (!text) return null;
   const sentence = text.split(/(?<=[.!?])\s/)[0] ?? text;
   return sentence.replace(/^(?:this (?:file|module|script|component)|the file|`[^`]+`)\s+/i, "").trim() || sentence;
+}
+
+/** Group id for a rendered cluster element. Mermaid names it
+ * `[<renderId>-]g_<groupId>`, from the id the compiler assigned. */
+function groupIdOf(el: Element, known: Set<string>): string | null {
+  const match = /g_([a-z0-9_]+)$/.exec(el.id);
+  return match && known.has(match[1]) ? match[1] : null;
 }
 
 /** Files a map node stands for: itself, or a folder's direct children. */
@@ -254,7 +264,15 @@ function markTypeLines(node: SVGGElement) {
   });
 }
 
-export function ArchitectureView({ architecture, nodes, theme, selectedId, onSelect }: Props) {
+export function ArchitectureView({
+  architecture,
+  nodes,
+  theme,
+  selectedId,
+  onSelect,
+  selectedGroupId = null,
+  onSelectGroup,
+}: Props) {
   const [allImports, setAllImports] = useState(false);
   const model = useMemo(() => buildModel(architecture, nodes, allImports), [architecture, nodes, allImports]);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -268,9 +286,14 @@ export function ArchitectureView({ architecture, nodes, theme, selectedId, onSel
   // container the target of the later pointerup/click, so the node has to
   // be resolved here, not from the click event.
   const pressedNode = useRef<string | null>(null);
+  const pressedGroup = useRef<string | null>(null);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const pinchDistance = useRef<number | null>(null);
   const lastSize = useRef<{ w: number; h: number } | null>(null);
+  // True until the reader zooms or pans by hand. While it holds, the view is
+  // still "the fit", so a resize should produce a new fit; once they've
+  // chosen their own view, a resize must not throw it away.
+  const untouched = useRef(true);
   // Layout direction, picked once per architecture (see the render effect)
   // and reused on theme / import-toggle re-renders so the view doesn't jump.
   const chosenDirection = useRef<{ arch: Architecture; direction: Direction } | null>(null);
@@ -300,6 +323,7 @@ export function ArchitectureView({ architecture, nodes, theme, selectedId, onSel
       const scale = Math.min((cw - FIT_PADDING * 2) / w, (ch - FIT_PADDING * 2) / h, MAX_FIT_SCALE);
       fitScale.current = scale;
       view.current = { x: (cw - w * scale) / 2, y: (ch - h * scale) / 2, scale };
+      untouched.current = true;
       apply(animate);
     },
     [apply],
@@ -313,6 +337,7 @@ export function ArchitectureView({ architecture, nodes, theme, selectedId, onSel
       const px = clientX - rect.left;
       const py = clientY - rect.top;
       const { x, y, scale } = view.current;
+      untouched.current = false;
       const next = Math.min(MAX_SCALE, Math.max(fitScale.current * MIN_SCALE_OF_FIT, scale * factor));
       const ratio = next / scale;
       view.current = { x: px - (px - x) * ratio, y: py - (py - y) * ratio, scale: next };
@@ -411,6 +436,15 @@ export function ArchitectureView({ architecture, nodes, theme, selectedId, onSel
           if (path.startsWith("ext:")) g.classList.add("arch-node--external");
           markTypeLines(g);
         });
+        // Group boxes are selectable too: a section of the map is a thing a
+        // reader can point at and ask about.
+        const groupIds = new Set(architecture.groups.map((group) => group.id));
+        host.querySelectorAll<SVGGElement>("g.cluster").forEach((g) => {
+          const groupId = groupIdOf(g, groupIds);
+          if (!groupId) return;
+          g.dataset.groupId = groupId;
+          g.classList.add("arch-group");
+        });
         setRenderState("ready");
         setRenderVersion((v) => v + 1);
       })
@@ -446,6 +480,15 @@ export function ArchitectureView({ architecture, nodes, theme, selectedId, onSel
     }
   }, [selectedId, renderVersion]);
 
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    host.querySelectorAll(".arch-group--selected").forEach((el) => el.classList.remove("arch-group--selected"));
+    if (selectedGroupId) {
+      host.querySelector(`[data-group-id="${CSS.escape(selectedGroupId)}"]`)?.classList.add("arch-group--selected");
+    }
+  }, [selectedGroupId, renderVersion]);
+
   // Wheel needs a non-passive listener to stop the page scrolling.
   useEffect(() => {
     const container = containerRef.current;
@@ -453,6 +496,7 @@ export function ArchitectureView({ architecture, nodes, theme, selectedId, onSel
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       if (isTrackpadScroll(e)) {
+        untouched.current = false;
         view.current = { ...view.current, x: view.current.x - e.deltaX, y: view.current.y - e.deltaY };
         apply(false);
         return;
@@ -474,15 +518,24 @@ export function ArchitectureView({ architecture, nodes, theme, selectedId, onSel
     const observer = new ResizeObserver(() => {
       const w = container.clientWidth;
       const h = container.clientHeight;
+      // With both side panels open the map can get narrower than its own
+      // legend plus toolbar; stack them instead of letting them collide.
+      container.classList.toggle("arch--narrow", w < 880);
       const last = lastSize.current;
       lastSize.current = { w, h };
       if (!last || !content.current.w) return;
+      if (untouched.current) {
+        // Still showing the fit: fit the new space (a panel opening can take
+        // a third of the width, and re-centring alone would clip the map).
+        fit(true);
+        return;
+      }
       view.current = { ...view.current, x: view.current.x + (w - last.w) / 2, y: view.current.y + (h - last.h) / 2 };
       apply(true);
     });
     observer.observe(container);
     return () => observer.disconnect();
-  }, [apply]);
+  }, [apply, fit]);
 
   function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
     if (e.button !== 0 && e.pointerType === "mouse") return;
@@ -490,6 +543,11 @@ export function ArchitectureView({ architecture, nodes, theme, selectedId, onSel
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     dragged.current = false;
     pressedNode.current = (e.target as Element).closest<SVGGElement>("g.arch-node")?.dataset.archId ?? null;
+    // Nodes are drawn in their own layer, not inside the cluster element, so
+    // a press on a node never reaches this.
+    pressedGroup.current = pressedNode.current
+      ? null
+      : (e.target as Element).closest<SVGGElement>("g.arch-group")?.dataset.groupId ?? null;
     containerRef.current?.classList.add("arch--dragging");
   }
 
@@ -513,6 +571,7 @@ export function ArchitectureView({ architecture, nodes, theme, selectedId, onSel
     const dy = e.clientY - prev.y;
     if (!dragged.current && Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
     dragged.current = true;
+    untouched.current = false;
     view.current = { ...view.current, x: view.current.x + dx, y: view.current.y + dy };
     apply(false);
   }
@@ -523,8 +582,12 @@ export function ArchitectureView({ architecture, nodes, theme, selectedId, onSel
     if (pointers.current.size === 0) containerRef.current?.classList.remove("arch--dragging");
     // A press-and-release on a node, without dragging, is a selection. A
     // drag that happens to end over a node is not.
-    if (e.type === "pointerup" && !dragged.current && pressedNode.current) onSelect(pressedNode.current);
+    if (e.type === "pointerup" && !dragged.current) {
+      if (pressedNode.current) onSelect(pressedNode.current);
+      else if (pressedGroup.current) onSelectGroup?.(pressedGroup.current);
+    }
     pressedNode.current = null;
+    pressedGroup.current = null;
   }
 
   return (
@@ -536,7 +599,7 @@ export function ArchitectureView({ architecture, nodes, theme, selectedId, onSel
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
       onDoubleClick={(e) => {
-        if (!(e.target as Element).closest("g.arch-node")) fit(true);
+        if (!(e.target as Element).closest("g.arch-node, g.arch-group")) fit(true);
       }}
     >
       <div ref={canvasRef} className="arch__canvas">

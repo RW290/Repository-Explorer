@@ -116,6 +116,19 @@ class FileRationale(BaseModel):
     created_at: float
 
 
+class ArchitectureRationale(BaseModel):
+    """A question asked about the architecture map, optionally focused on one
+    group or node, with its answer. Shared with everyone who opens the repo."""
+
+    id: str
+    question: str
+    answer: str
+    focus_kind: Literal["group", "node"] | None = None
+    focus_id: str | None = None
+    focus_label: str | None = None
+    created_at: float
+
+
 class SymbolExplainer(BaseModel):
     """One-line explanation of a function, method or class, generated for a
     whole file at once the first time it's opened (see symbols.py)."""

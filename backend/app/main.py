@@ -14,6 +14,7 @@ import os
 import time
 import uuid
 from pathlib import Path
+from typing import Literal
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
@@ -27,12 +28,13 @@ from app.explain import (
     DEFAULT_FILE_QUESTION,
     DEFAULT_PROJECT_QUESTION,
     DEFAULT_QUESTION,
+    explain_architecture,
     explain_file,
     explain_project,
     explain_selection,
 )
 from app.jobs import get_job, start_job
-from app.models import Architecture, FileRationale, Graph, LineRationale, ProjectRationale, SymbolExplainer
+from app.models import Architecture, ArchitectureRationale, FileRationale, Graph, LineRationale, ProjectRationale, SymbolExplainer
 from app.symbols import explain_symbols
 from app.pipeline import edges_are_stale, ensure_architecture, load_cached, parse_repo_url, run_pipeline
 
@@ -102,6 +104,14 @@ class FileExplainRequest(BaseModel):
 
 class ProjectExplainRequest(BaseModel):
     question: str | None = None
+
+
+class ArchitectureExplainRequest(BaseModel):
+    question: str | None = None
+    # What the reader has selected on the map, so "explain this section" has
+    # a referent. Omitted for a question about the map as a whole.
+    focus_kind: Literal["group", "node"] | None = None
+    focus_id: str | None = None
 
 
 class SymbolExplainRequest(BaseModel):
@@ -286,6 +296,43 @@ def create_rationale(owner: str, name: str, payload: ExplainRequest) -> dict:
         "created_at": time.time(),
     }
     rationale_store.add_rationale(owner, name, entry)
+    return entry
+
+
+@app.get("/api/repos/{owner}/{name}/architecture-rationales", response_model=list[ArchitectureRationale])
+def get_architecture_rationales(owner: str, name: str) -> list[dict]:
+    return rationale_store.load_architecture_rationales(owner, name)
+
+
+@app.post("/api/repos/{owner}/{name}/architecture-rationales", response_model=ArchitectureRationale)
+def create_architecture_rationale(owner: str, name: str, payload: ArchitectureExplainRequest) -> dict:
+    """Answers a question about the architecture map. The model is handed the
+    map itself — groups, member files with their summaries, every flow and
+    whether imports back it — plus whatever the reader has selected, so the
+    answer is about this diagram rather than about architecture in general."""
+    cached = load_cached(f"https://github.com/{owner}/{name}")
+    if cached is None:
+        raise HTTPException(status_code=404, detail="This repository hasn't been analyzed yet.")
+    if not cached.get("architecture"):
+        raise HTTPException(status_code=409, detail="This repository has no architecture map yet, so there's nothing to ask about.")
+
+    try:
+        question, answer, focus_label = explain_architecture(
+            owner, name, cached, payload.question, payload.focus_kind, payload.focus_id
+        )
+    except PipelineError as e:
+        raise HTTPException(status_code=e.http_status, detail=str(e))
+
+    entry = {
+        "id": str(uuid.uuid4()),
+        "question": question,
+        "answer": answer,
+        "focus_kind": payload.focus_kind if focus_label else None,
+        "focus_id": payload.focus_id if focus_label else None,
+        "focus_label": focus_label,
+        "created_at": time.time(),
+    }
+    rationale_store.add_architecture_rationale(owner, name, entry)
     return entry
 
 
