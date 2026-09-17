@@ -1,16 +1,14 @@
 """Single abstracted LLM interface: prompt in, text out.
 
-Backend is an open-weight instruct model served by Ollama Cloud
-(ollama.com) — Ollama's own hosted GPU service, not a model run locally on
-this server or in the end user's device/browser. Same tradeoff as the
-Hugging Face backend this replaced: someone else's infrastructure does the
-compute, so a slow/expensive model here doesn't cost this server anything
-but latency. Free-tier usage is quota'd by GPU-time and resets every few
-hours plus a weekly cap, rather than Hugging Face's flat ~$0.10/month
-credit — more forgiving for a low-traffic personal deployment.
+The model is an open-weight reasoning model served by Ollama Cloud
+(ollama.com) — Ollama's hosted GPU service, not a model run on this server or
+in the reader's browser. Someone else's infrastructure does the compute, so a
+slow model costs this server nothing but latency. Free-tier usage is metered
+by GPU time and resets every few hours, with a weekly cap, which suits a
+low-traffic deployment.
 
-Swapping backends later means changing call_llm's body, not any caller in
-parser.py/miner.py.
+Everything else talks to the model through call_llm, so changing provider
+means changing its body and nothing in the callers.
 """
 
 import os
@@ -26,41 +24,35 @@ from app.errors import LLMConfigError, LLMTransientError, PipelineError
 
 OLLAMA_HOST = "https://ollama.com"
 
-# gpt-oss:20b: confirmed working against the free tier as of writing, and
-# the smallest of the free-tier catalog (gemma4:31b, gpt-oss:120b,
-# nemotron-3-nano:30b, nemotron-3-super, nemotron-3-ultra are the other
-# options) — since free-tier quota is GPU-time-based, the smallest model
-# that's good enough stretches the quota furthest. Override via
-# OLLAMA_MODEL without a code change.
+# gpt-oss:20b is the smallest model in Ollama Cloud's free tier. The quota is
+# metered by GPU time, so the smallest model that is good enough stretches it
+# furthest. Override with OLLAMA_MODEL; see ollama.com/models for the catalog.
 DEFAULT_MODEL = os.environ.get("OLLAMA_MODEL", "gpt-oss:20b")
 
 T = TypeVar("T")
 
 # Responses are streamed, and these timeouts are why. A non-streaming call
 # sends nothing for the whole generation — 30 to 300 seconds of a silent
-# socket — and somewhere between here and the GPU a load balancer or NAT
-# drops a connection that idle, without telling anyone. With no read timeout
-# the client then waits forever, and with a fixed number of call slots three
-# such zombies stall the entire pipeline (which is exactly how this was
-# found: three ESTABLISHED sockets, zero progress, provider healthy).
-# Streaming keeps bytes moving so the idle timer never fires, and turns a
-# dead connection into something observable: no bytes for READ_STALL_SECONDS
-# means it's gone, so give up and retry rather than wait.
+# socket — and a connection idle that long can be dropped by a load balancer
+# or NAT along the path without either end being told. With no read timeout
+# the client then waits forever, and because call slots are finite, a few
+# such dead connections stall the whole pipeline. Streaming keeps bytes
+# moving so idle timers never fire, and makes a dead connection observable:
+# no bytes for READ_STALL_SECONDS means it is gone, so give up and retry.
 #
 # The stall window has to cover *queue wait*, not just gaps mid-answer. With
 # several calls in flight the provider queues some, and a queued request
-# legitimately receives nothing until its turn. At 90s this timeout killed
-# requests that were merely waiting, and the retry sent each to the back of
-# the queue — a run got slower, not safer (summaries 440s against 259s). So:
-# long enough to outlast the queue at our own concurrency, and a concurrency
-# low enough (below) that the queue stays short.
+# legitimately receives nothing until its turn. A window shorter than that
+# wait kills requests that are merely queued and sends each retry to the back
+# of the queue, making runs slower rather than safer. So: long enough to
+# outlast the queue at our own concurrency, and a concurrency low enough
+# (below) that the queue stays short.
 READ_STALL_SECONDS = 240
 CALL_DEADLINE_SECONDS = 300
 # A reasoning model occasionally falls into a repetition loop and generates
-# until it exhausts its context — observed here as two connections each
-# pulling ~20KB/s for fifteen minutes while the pipeline sat at 68/121. It is
-# a sampling accident (the same prompt finished in 10s when re-run), so the
-# answer is a guard, not a prompt fix. Callers say roughly how long a good
+# until it exhausts its context, which can run for many minutes and burns
+# quota the whole time. It is a sampling accident — the same prompt completes
+# normally on another attempt — so the answer is a guard, not a prompt fix. Callers say roughly how long a good
 # answer is (`max_tokens`); that becomes a server-side `num_predict` cap,
 # which stops the GPU burning quota, plus a client-side character ceiling in
 # case the cap isn't honoured. Hitting either is a retryable failure: a fresh
@@ -69,10 +61,10 @@ DEFAULT_MAX_TOKENS = 6000
 _CHARS_PER_TOKEN_CEILING = 6
 _TIMEOUT = httpx.Timeout(connect=15, read=READ_STALL_SECONDS, write=30, pool=30)
 
-# How many LLM calls may be in flight at once, process-wide. Measured against
-# the free tier: four concurrent summary batches finished in ~122s against
-# ~160s back-to-back — the provider mostly queues rather than parallelizes,
-# so there is perhaps 1.5x to be had and no more. Two captures most of that
+# How many LLM calls may be in flight at once, process-wide. On the free
+# tier, four concurrent summary batches finish in about 122s against about
+# 160s back-to-back: the provider mostly queues rather than parallelizes, so
+# there is perhaps 1.5x to be had and no more. Two captures most of that
 # while keeping any one request's queue wait to about one call's duration;
 # more just lengthens the queue (see READ_STALL_SECONDS). It's a global
 # semaphore rather than a per-pipeline pool so two people analyzing at once
@@ -120,9 +112,9 @@ def call_llm(
 
     `think` is the reasoning effort ("low" | "medium" | "high") for models
     that have one. It is the single biggest latency lever here: gpt-oss at
-    its default effort wrote ~9,000 characters of hidden reasoning to produce
-    a ~5,000 character batch of file summaries (50s); at "low" it wrote ~50
-    (27s), with summaries of the same quality. Summarizing is recall and
+    its default effort writes ~9,000 characters of hidden reasoning to produce
+    a ~5,000 character batch of file summaries (~50s); at "low" it writes ~50
+    (~27s), with summaries of the same quality. Summarizing is recall and
     phrasing, not multi-step deduction, so the reasoning bought nothing.
     Callers leave it unset for the tasks where it might: PR rationale and
     the architecture map."""

@@ -141,10 +141,10 @@ export async function buildArchitecture(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ force_refresh: forceRefresh }),
   });
-  // A backend from before this endpoint existed has no POST route here, so
-  // the request falls through to its catch-all GET route and comes back 405
-  // (or 404). That's a stale server, not a problem with the repo — say so,
-  // instead of surfacing a bare "Method Not Allowed".
+  // A backend process running code older than the frontend has no POST route
+  // here, so the request falls through to its catch-all GET route and comes
+  // back 405 (or 404). That's a stale server, not a problem with the repo —
+  // say so, instead of surfacing a bare "Method Not Allowed".
   if (res.status === 405 || res.status === 404) {
     const body = await res.clone().json().catch(() => null);
     if (!body?.detail || body.detail === "Method Not Allowed" || body.detail === "Not Found") {

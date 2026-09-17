@@ -4,7 +4,8 @@ Live at [repository-explorer.replit.app](https://repository-explorer.replit.app)
 
 Use the **Start application** workflow. It starts:
 
-- the FastAPI backend on port 8000
+- the FastAPI backend on port 8000, with auto-reload, so pulling new code
+  refreshes the API along with the frontend
 - the React/Vite frontend on port 5000
 
 The Vite development server proxies `/api` and `/health` to the backend, so
@@ -14,9 +15,10 @@ The fixture demo works without credentials.
 
 To analyze a real GitHub repository, add **both** secrets in Replit Secrets:
 
-- `OLLAMA_API_KEY` — for file summaries and PR rationale (free key at
-  ollama.com/settings/keys, no card required), used to call an open-weight
-  model through Ollama Cloud.
+- `OLLAMA_API_KEY` — for everything model-written: file summaries, PR
+  rationale, the project overview, the architecture map, function
+  explainers and "ask why" answers. Free key at ollama.com/settings/keys, no
+  card required; it calls an open-weight model through Ollama Cloud.
 - `GITHUB_TOKEN` — a personal access token with read access to public
   repositories.
 
@@ -39,6 +41,9 @@ it's opt-in and not on by default):
 The local `Start application` workflow remains a two-process Vite plus
 Uvicorn setup for fast development. The production server serves the compiled
 SPA directly and returns the frontend for client-side routes.
+
+Pushing to GitHub does not update the published site: pull in the
+workspace, then republish from the Deploy panel.
 
 When actually publishing, the deployment type (Autoscale vs. Reserved VM) is
 also selected in Replit's Deploy panel UI — the `deploymentTarget` in

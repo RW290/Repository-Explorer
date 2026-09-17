@@ -64,9 +64,9 @@ const NODE_W = 196;
 const NODE_H = 150;
 
 /** Center of the folder grid's bounding box, which the repo-level camera
- * frames. The project overview is no longer part of this composition — it's
- * a screen-space overlay, so its size doesn't depend on how many folders
- * there are (and the folder count doesn't shrink the prose). */
+ * frames. The project overview is not part of this composition: it's a
+ * screen-space overlay, so its size doesn't depend on how many folders there
+ * are, and the folder count doesn't shrink the prose. */
 export function repoViewCenter(folders: Point[]): Point {
   if (folders.length === 0) return { x: 0, y: 0 };
   const xs = folders.map((p) => p.x);

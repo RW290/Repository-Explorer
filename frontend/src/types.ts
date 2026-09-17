@@ -62,7 +62,7 @@ export interface Architecture {
 export interface Graph {
   nodes: GraphNode[];
   annotations: Annotation[];
-  // Absent for the phase-1 fixture demo, which isn't backed by a real GitHub
+  // Null for the fixture demo, which isn't backed by a real GitHub
   // repo — the viewer uses this to decide whether source-viewing and line
   // rationale are available at all.
   repo_url: string | null;

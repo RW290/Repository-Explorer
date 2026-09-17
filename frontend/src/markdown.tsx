@@ -4,11 +4,10 @@ import type { ReactNode } from "react";
  * Renders model output as rich text: inline code, fenced code blocks, bold
  * and italics.
  *
- * The earlier approach asked the prompts for plain prose and stripped any
- * Markdown that came back anyway. That fought the model rather than using
- * it — writing `Session` in backticks is exactly how an identifier should
- * be written, and flattening it lost the distinction between prose and
- * code. The prompts now ask for that markup and this renders it.
+ * The prompts ask the model for this markup (see backend/app/audience.py):
+ * writing `Session` in backticks is exactly how an identifier should be
+ * written, and rendering it keeps the distinction between prose and code
+ * that stripping it to plain text would lose.
  *
  * Builds React elements rather than setting innerHTML: this is model
  * output, and it should never be able to inject markup.

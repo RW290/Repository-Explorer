@@ -1,241 +1,305 @@
 # Repository-Explorer
 
-Ingests a GitHub repo and produces an explorable, animated visualization of
-its architecture, annotated with *why* things are the way they are — pulled
-from PR descriptions and linked issues. See
-[`repo-breakdown-build-brief.md`](repo-breakdown-build-brief.md) for the full
-design.
+Point it at a public GitHub repository and it builds an explorable picture of
+the codebase: which files exist, how they depend on each other, what each one
+is for, how they group into architectural layers, and — drawn from the
+project's own pull requests — *why* things are the way they are.
 
 **Live**: [repository-explorer.replit.app](https://repository-explorer.replit.app)
 
-Priority order: accuracy of the "why" annotations > the animated viewer >
-breadth of repos it works on.
+It is built for an engineer reading an unfamiliar codebase to learn from it,
+so every piece of model-written text explains design rationale and
+tradeoffs rather than restating code. The priorities, in order: accuracy of
+the "why" > the viewer > breadth of repos it handles.
 
-## Status
+## The integrity rule
 
-**All 4 phases done, validated against two structurally different repos:**
-[psf/requests](https://github.com/psf/requests) (mature, `src/`-layout,
-heavy PR discipline) and
-[CommanderBlop/scribe-dictation](https://github.com/CommanderBlop/scribe-dictation)
-(small solo project, flat layout, almost no PR history).
+Anything the model *infers* is kept visibly separate from anything a human
+*stated*, everywhere:
 
-- **Parser** (`backend/app/parser.py`) — shallow-clones the repo, builds a
-  file-level import graph (no LLM — see the resolver below), then batches
-  every file into LLM calls for summaries. File discovery works for any
-  layout (not just `src/`). Also
-  generates a one-time project overview (from the repo's README, or folder
-  structure if there's no README) shown at the top zoom level in the viewer.
-- **Import resolver** (`backend/app/imports.py`) — the dependency edges,
-  for Python, JavaScript/TypeScript (incl. Vue/Svelte), Go, Rust,
-  Java/Kotlin/Scala, C/C++, Ruby, PHP, Dart, CSS/SCSS and HTML. Pure local
-  static analysis: Python via `ast`, everything else via line-anchored
-  import patterns — import statements are the most regular syntax a
-  language has, and a real parser per language would mean a native
-  toolchain per language on the server. The substance is *resolution*,
-  done per language: tsconfig `paths`/`baseUrl` (with `extends` and JSONC
-  comments), workspace packages, the `.js`→`.ts` ESM quirk and index
-  files; Go module path → package directory; Rust `mod` declarations and
-  `crate::`/`super::` paths across workspace crates; JVM imports and C
-  includes by path suffix; composer PSR-4; Sass partials; Python import
-  roots inferred from layout, so a nested `backend/app` package resolves.
-  An edge is drawn only when an import lands on a file that exists in the
-  repo — third-party and stdlib imports resolve to nothing and are dropped
-  (a repo file named `logging.py` does not capture `import logging`).
-  Covered by `backend/tests/test_imports.py` (`python -m unittest discover
-  -s tests` from `backend/`), which asserts exact edge sets because an
-  extra edge is as wrong as a missing one. The resolver is versioned:
-  opening a repo analyzed under an older one re-resolves its edges from a
-  fresh clone in a background job — seconds, no LLM quota — instead of
-  discarding the expensive parts of the analysis.
-- **Miner** (`backend/app/miner.py`) — fetches merged PRs via the GitHub
-  GraphQL API through `app/github_client.py` (the `gh` CLI locally, a real
-  token when deployed — see Secrets below), filters trivial/irrelevant
-  diffs locally, and batches the rest into LLM calls for rationale
-  extraction. Falls back to the merge commit body for squash-merged PRs,
-  and only fetches a full diff for the minority of PRs with no usable
-  description.
-- **Merge** (`backend/app/merge.py`) — attaches annotations to nodes.
-- **Architecture map** (`backend/app/architecture.py`) — a semantic view
-  laid over the file graph, in the spirit of
-  [gitdiagram](https://github.com/ahmedkhaleel2004/gitdiagram). The map's
-  boxes are the graph's own file and folder nodes: the model doesn't invent
-  components, it picks the 8–20 files/folders a reader needs, sorts them
-  into 2–6 groups by architectural role (frontend / HTTP API / core / LLM /
-  tests …), and names the main flows between them. It gets the per-file
-  summaries and the real import edges (not just a file tree) and returns a
-  bounded JSON AST, never Mermaid — the frontend compiles that
-  deterministically. Members that don't resolve to a real node are dropped,
-  not guessed, and every flow is checked against the import graph: flows
-  the imports back are drawn solid, flows the model asserted but imports
-  can't see (HTTP calls, subprocesses, external APIs) are kept but drawn
-  dashed — the same stated-vs-inferred rule the PR annotations follow.
-  Systems outside the repo (a library it builds on, an HTTP API, an LLM
-  service) can appear as greyed "external" hexagons, the one kind of box
-  that isn't a file. Runs as the last pipeline stage; repos cached before
-  it existed get one built lazily on first open.
-- **Function explainers** (`backend/app/symbols.py`) — the first time a
-  file's source is opened, every function, method and class in it gets a
-  proactive one-line explanation (what it does and why it exists), shown
-  inline above its definition and listed in the side panel. Symbols are
-  found locally — Python via `ast`, JavaScript/TypeScript via conservative
-  line patterns, other languages get none rather than guesses — and
-  explained in one batched LLM call per ~30 symbols, then persisted per
-  file (`POST /api/repos/{owner}/{name}/symbol-explainers`) so it costs
-  one call per file, ever.
-- **Speed and liveness** (`backend/app/pipeline.py`, `progress.py`) — a
-  fresh analysis is minutes of waiting on a rate-limited model, so the work
-  is split between making it shorter and making it not matter:
-  - *Time to first useful view is decoupled from time to finished.*
-    Structure (files, folders, import edges) needs no model and is known
-    within seconds of the clone, so the pipeline publishes that partial
-    graph immediately and re-publishes as summaries, the overview and PR
-    history land. The viewer opens on it and fills in live — hubs first,
-    since batches are ordered by how connected a file is. The architecture
-    map, the one stage that reads the summaries, arrives last.
-  - *Reasoning effort is the biggest latency lever.* `gpt-oss` at its
-    default effort wrote ~9,000 characters of hidden reasoning to produce a
-    ~5,000 character batch of summaries (50s); at `think="low"` it wrote
-    ~50 (27s), same quality. Summaries, the overview, function explainers
-    and interactive answers run low; PR rationale and the map keep the
-    default, because stated-vs-inferred is the integrity rule everything
-    rests on and the map is a genuine structuring task.
-  - *Output tokens are the cost, so write less.* Source files get a
-    paragraph; docs, config, data and tests get a sentence or two; a
-    LICENSE, `.gitignore` or empty `__init__.py` gets a templated summary
-    and no model call. Batches are sized by input budget rather than a
-    fixed six files, so small files share a call.
-  - *Independent stages overlap.* PR history needs only the file list and
-    the overview only the README, so both run alongside the summaries
-    instead of after them.
-  - *Concurrency is capped low on purpose.* Measured on the free tier,
-    four concurrent batches took ~122s against ~160s back-to-back: the
-    provider queues rather than parallelizes, so there's perhaps 1.5x to be
-    had. A pool of 2 (one process-wide semaphore, `LLM_CONCURRENCY`) takes
-    most of it; more only lengthens the queue.
-  - *Responses are streamed, with a stall timeout.* A non-streaming call
-    sends nothing for the whole generation, and a socket silent for minutes
-    gets dropped somewhere along the path without notice — found as three
-    ESTABLISHED connections, zero progress and a healthy provider, every
-    call slot held by a zombie. Streaming keeps bytes moving, and "no bytes
-    for 240s" becomes a retryable failure. (240, not 90: the window has to
-    outlast *queue wait* at our own concurrency, or it kills requests that
-    are merely waiting their turn and retries them to the back of the
-    queue — which made one run slower, not safer.)
-  - *Every call has a token fuse.* A reasoning model occasionally loops and
-    generates until its context is exhausted — seen as two connections
-    pulling ~20KB/s for fifteen minutes. It's a sampling accident (the same
-    prompt finished in 10s when re-run), so each call states roughly how
-    long a good answer is; that becomes a server-side `num_predict` cap
-    (which also stops the quota burning) plus a client-side ceiling, and
-    tripping either is retried. A summary reply cut off by the cap is
-    salvaged entry by entry, and only the missing files are re-asked.
-  - *Polling stays cheap.* Partial graphs are versioned; a poll says which
-    version it has and gets the graph back only when it changed, so polling
-    every ~1s costs a few hundred bytes most of the time.
-  Measured on psf/requests (121 files, 40 PRs), free tier: explorable graph
-  at **1.5s**, finished at **~3m 25s** (summaries 168s ‖ PR history 184s,
-  then the map in 17s), no file left without a summary. The previous
-  sequential pipeline — ~30 default-effort calls with 2s sleeps between
-  them, nothing shown until the end — works out to upwards of 20 minutes
-  for the same repo (estimated from per-call timings, not re-measured).
-  The viewer shows all of this: a stage tracker with counts and timings,
-  an activity feed, shimmer placeholders on cards whose summary isn't
-  written yet, and a "map …" tab that enables when the last stage lands.
-- **Explain** (`backend/app/explain.py`) — three interactive, on-demand
-  "ask why" variants, each persisted server-side and shared with every
-  future visitor to that repo rather than kept per-browser: a highlighted
-  line range, a whole file (grounded in what it depends on and what
-  depends on it), or a follow-up question about the project overview.
-- **Viewer** — same animated pan/zoom UI from phase 1, now pointed at real
-  data. The landing screen lets you type a repo URL; results are cached to
-  `backend/.cache/` (gitignored) since a fresh run costs real LLM/API calls.
+- A PR annotation has two fields that are never merged: `rationale_stated`
+  (the author's own reason, restated precisely) and `rationale_inferred`
+  (the model's reading of the diff, only when the author gave none), plus a
+  `confidence`. The viewer renders them differently.
+- On the architecture map, a flow the import graph backs is drawn solid; one
+  the model asserted but imports can't show (an HTTP call, a subprocess, an
+  external API) is drawn dashed and labeled "inferred".
+- Every box on the map is a real file or folder. A path the model gives that
+  doesn't exist is dropped, never guessed at.
+- Where there is no signal — a repo with thin PR history — the tool shows
+  less rather than inventing more.
 
-All LLM-written text (file summaries, PR rationale, project overview, and
-all three "ask why" variants) shares one framing (`app/audience.py`): the
-reader is a software engineer using this to learn good coding practice and
-system design, so answers should ground the *design rationale* behind a
-choice — tradeoffs, patterns, and QoS implications like latency/scalability/
-coupling where genuinely relevant — not just describe what code does, and
-not soften or change the underlying facts to be more approachable. File
-summaries and the "why does this file exist?" answers are additionally
-grounded in the file's actual dependency edges (what it imports, what
-imports it), not just its own content in isolation.
+## How an analysis runs
 
-Spot-checked a sample of annotations from both repos by hand against the
-actual PRs (e.g. `requests`' CVE-2024-47081 fix and v2.32.5 SSLContext
-revert; `scribe-dictation`'s session-mode and pacing-timer PRs) — rationale
-text matched the real PR content, and thin/missing PR descriptions
-correctly fell back to `rationale_inferred` with lower confidence rather
-than being presented as stated fact.
+`backend/app/pipeline.py` orchestrates it:
 
-PR mining has been exercised against two differently-shaped Python repos.
-The import resolver has been run against real repos in several languages
-(psf/requests — no edges lost versus the old Python-only resolver; this
-repo's own nested Python + TypeScript; a TypeScript app using `~/` path
-aliases; a Rust crate with a lib + bin; a Go module with subpackages) plus
-synthetic cases for the rest. A heavily dynamic-import codebase hasn't been
-tried, and would mostly show up as missing edges.
+```
+clone → resolve imports → ┬ summarize files      ┐
+                          ├ mine pull requests   ├→ merge → map architecture → cache
+                          └ write overview       ┘
+```
 
-## Layout
+**Structure first, and published immediately.** Cloning and import
+resolution need no model and take a few seconds. The pipeline publishes that
+partial graph right away and re-publishes as summaries, the overview and PR
+history land, so the viewer opens on a real graph within seconds and fills
+in live. Time-to-first-useful-view is decoupled from time-to-finished. On
+psf/requests (121 files, 40 PRs, free tier) the graph is explorable at about
+1.5s and the analysis completes in about 3½ minutes.
 
-- `backend/` — FastAPI server (Python).
-  - `GET /health` — plain liveness check for hosting platforms.
-  - `GET /api/graph` — the phase-1 fixture, zero cost/latency.
-  - `GET /api/graph?repo_url=...` — synchronous real-pipeline path. Fine for
-    local dev; a hosted deployment should avoid it, since an uncached repo
-    takes minutes and most platforms time out a request well before that.
-  - `POST /api/analyze {repo_url, force_refresh?}` — the deployment-safe
-    path. Returns immediately: `{status: "done", graph}` if already cached,
-    otherwise `{job_id, status: "running"}` and starts the pipeline in a
-    background thread (see `backend/app/jobs.py`).
-  - `GET /api/analyze/{job_id}?have=N` — poll a job's `status` ("running" /
-    "done" / "error") and `progress` (every stage's status, counts and
-    timing, plus a feed of recent events). While running, `graph` is the
-    *partial* graph (`partial: true`) — sent only when its version differs
-    from `have`; once done, the final one.
-  - `POST /api/repos/{owner}/{name}/architecture {force_refresh?}` — build
-    (or return the cached) architecture map for an already-analyzed repo.
-    New analyses carry it in the graph; this backfills older caches with one
-    LLM call instead of a full re-analysis.
-  - `GET /api/repos/{owner}/{name}/file?path=...` — raw source for a file,
-    fetched from GitHub on demand (not stored during analysis).
-  - `GET`/`POST /api/repos/{owner}/{name}/rationales` — read or ask a
-    "why is this used?" question about a highlighted line range.
-  - `GET`/`POST /api/repos/{owner}/{name}/file-rationales` — read or ask
-    "why does this file exist?", grounded in its dependencies/dependents.
-  - `GET`/`POST /api/repos/{owner}/{name}/project-rationales` — read or ask
-    a follow-up question about the project overview.
-  - All three rationale POST endpoints persist their answer to
-    `backend/.cache/` (see `backend/app/rationale_store.py`), shared with
-    every future visitor to that repo rather than kept per-browser.
-- `frontend/` — React + TypeScript + Vite viewer. A **Map / Folders**
-  switch sits beside the breadcrumbs at every level (or press `M`), and it
-  keeps your place: from a file, Map selects that file on the map; from a
-  selected map node, Folders lands on that node in the explorer. The two
-  modes: **map** (default when available) renders the architecture map as
-  a Mermaid flowchart laid out by ELK on a freely pannable/zoomable canvas
-  (drag to pan, wheel or pinch to zoom, fit/zoom controls; the compiler is
-  `src/mermaid.ts`, the view `src/ArchitectureView.tsx`). The boxes are the
-  same folder/file nodes as the grid, in the same folder/Python/other
-  colours, each with its folder path and the first line of its summary,
-  grouped into the map's semantic layers. Clicking one opens the
-  usual detail panel (summary, dependencies, history, source, "why does
-  this file exist?") plus which group it sits in and its in/out flows on
-  the map, each tagged import-verified or inferred; "Open in explorer"
-  drops into the second mode at that node. An "all imports" toggle overlays
-  every other real import between the map's nodes, thin and unlabeled, so
-  the model's chosen flows can be checked against the whole truth.
-  **folders** is the animated camera from before: folders (plus the
-  project overview, if one was generated), clicking a folder zooms into its
-  files, clicking a file zooms into full detail (summary, dependencies,
-  annotations with stated-vs-inferred rationale visually distinguished, a
-  source viewer with line-level "ask why," and a file-level "why does this
-  file exist?"). Mermaid runs in strict security mode with SVG labels and
-  no click directives; node clicks are wired on the rendered SVG. It's
-  lazy-loaded with the map so the landing bundle is unchanged.
-  The landing page uses the async job endpoints, polling about once a
-  second: it shows the stage tracker for the first few seconds, then opens
-  the viewer on the partial graph with the tracker as a collapsible HUD.
+The three model-bound stages in the middle are independent — history needs
+only the file list, the overview only the README — so they run concurrently.
+The map goes last because it is the one stage that reads the summaries.
+Finished graphs are cached to `backend/.cache/` (gitignored); a cached repo
+opens instantly.
+
+### Import resolver — `backend/app/imports.py`
+
+The dependency edges. Local static analysis, no model: Python via `ast`,
+everything else via line-anchored import patterns. Import statements are the
+most regular syntax a language has, and a real parser per language would
+mean a native toolchain per language on the server; the substance is
+*resolution*, which is language semantics:
+
+| Language | What resolves |
+|---|---|
+| Python | Relative imports, packages, and import roots inferred from layout (repo root, `src/`, project directories, the file's ancestors), so a nested package such as `backend/app` resolves. Standard-library names never match a repo file. |
+| JS / TS / Vue / Svelte | `import`, `export … from`, `require`, dynamic `import()`; extension and index resolution; the `.js`→`.ts` ESM convention; tsconfig/jsconfig `paths` and `baseUrl` (with `extends` and JSONC comments); workspace packages; Node `#subpath` imports; the `@/`→`src/` convention |
+| Go | `go.mod` module path → package directory → its files |
+| Rust | `mod` declarations; `crate::`, `super::`, `self::` paths; sibling workspace crates; a binary's use of its own library crate |
+| Java / Kotlin / Scala / Groovy | Fully-qualified, static and wildcard imports, matched by path suffix |
+| C / C++ / Objective-C | `#include`, relative first, then by path suffix |
+| Ruby, PHP, Dart | `require`/`require_relative`; composer PSR-4 `use` and literal includes; relative and own-`package:` imports |
+| CSS / SCSS / Less, HTML | `@import`/`@use`/`@forward` including Sass partials; `<script>`/`<link>` references |
+
+An edge exists only when an import lands on a file in the repo. Third-party
+and standard-library imports resolve to nothing and are dropped, which keeps
+the graph a picture of this codebase rather than of its dependency tree.
+
+Resolver output is versioned (`RESOLVER_VERSION`, stored on each graph).
+Opening a graph produced by an older resolver re-resolves its edges from a
+fresh clone in a background job — seconds, no model calls — and re-checks the
+map's solid/dashed verdicts, leaving the expensive parts of the analysis
+intact.
+
+### File summaries — `backend/app/parser.py`
+
+Generation time tracks how much the model *writes*, so files are tiered:
+
+- **Source files** get a paragraph about their design, grounded in what they
+  import and what imports them.
+- **Supporting files** (docs, config, data, tests, templates) get a sentence
+  or two.
+- **Boilerplate and empty files** (a LICENSE, `.gitignore`, an empty
+  `__init__.py`) get a templated summary and no model call.
+
+Batches are sized by input budget rather than a fixed file count, so small
+files share a call. Most-connected files are summarized first, since results
+stream to the viewer and hubs are what a reader opens first. A reply that
+isn't valid JSON is salvaged entry by entry and only the missing files are
+asked for again. Lockfiles, vendored and generated output, and binary, media
+and design-tool files are excluded from analysis entirely
+(`EXCLUDE_*` in `parser.py`).
+
+The same module writes the **project overview** from the README (or the
+folder structure when there is none).
+
+### PR history — `backend/app/miner.py`
+
+Fetches the 40 most recently updated merged PRs through the GitHub GraphQL
+API in one round trip per page, drops trivial ones locally (formatting,
+lockfile bumps, changes touching no known file), and extracts rationale from
+the rest in batches. For squash-merged repos the merge commit body is
+checked for the original description. A diff is fetched only for the
+minority of PRs with no usable description. Transient network failures are
+retried; configuration failures (no token, private repo) surface at once.
+`merge.py` attaches the resulting annotations to the files each PR touched.
+
+### Architecture map — `backend/app/architecture.py`
+
+A semantic view laid over the file graph, in the spirit of
+[gitdiagram](https://github.com/ahmedkhaleel2004/gitdiagram). Given the file
+summaries and the real import edges, the model picks the 8–20 files and
+folders a reader needs, sorts them into 2–6 groups by architectural role
+(frontend / HTTP API / core / LLM / tests …), names the main flows between
+them, and may add up to six external systems the code talks to. It returns a
+bounded JSON AST, never Mermaid; the frontend compiles it deterministically.
+
+The validator resolves every member to a real node, drops what it can't,
+caps the counts so the diagram stays a map rather than a second file
+listing, removes edge labels that say nothing ("imports", "uses"), and marks
+each flow as import-backed or not. A second model call is made only when the
+first result is unusable or lost a quarter of itself to validation.
+
+`POST /api/repos/{owner}/{name}/architecture` builds a map for a cached
+graph that has none.
+
+### Function explainers — `backend/app/symbols.py`
+
+The first time a file's source is opened, every function, method and class
+in it gets a one-line explanation of what it does and why it exists. Symbols
+are found locally — Python via `ast` (including nested definitions and
+`Class.method` names), JavaScript/TypeScript via conservative line patterns;
+other languages get none rather than guesses — and explained in one batched
+call per ~30 symbols. The result is stored per file, so a file costs one
+generation and every later visitor reads the stored set.
+
+### Ask why — `backend/app/explain.py`
+
+Three on-demand questions, each answered once and then shared with everyone
+who opens that repo: about a highlighted range of code, about why a whole
+file exists (grounded in what it depends on and what depends on it), and
+follow-ups about the project overview. Stored alongside the function
+explainers by `rationale_store.py`.
+
+### One audience — `backend/app/audience.py`
+
+Every prompt that produces reader-facing text shares one framing: the reader
+is a software engineer learning system design, so answers explain why an
+approach was chosen over alternatives and what it costs (latency,
+scalability, coupling, failure modes) where that is genuinely relevant, use
+precise terms, and say what is knowable instead of guessing.
+
+### Talking to the model — `backend/app/llm.py`
+
+One function, `call_llm(prompt) -> str`, in front of an open-weight model
+(`gpt-oss:20b` by default) served by Ollama Cloud. Swapping providers means
+changing that function's body. How it calls matters more than which model:
+
+- **Reasoning effort is the largest latency lever.** At default effort the
+  model writes roughly 9,000 characters of hidden reasoning to produce a
+  5,000-character batch of summaries; at `think="low"` it writes about 50,
+  in half the time, with summaries of the same quality. Summaries, the
+  overview, the map, function explainers and interactive answers run low.
+  PR rationale keeps the default: at low effort the stated/inferred labels
+  are the same but the text degrades to quoting the author instead of
+  stating the engineering reason, and that restatement is the product.
+- **Concurrency is capped at 2**, by one process-wide semaphore
+  (`LLM_CONCURRENCY`) so simultaneous analyses share the ceiling. The
+  provider mostly queues concurrent requests rather than running them in
+  parallel, so a larger pool only lengthens the queue.
+- **Responses are streamed, with a 240s stall timeout.** A non-streaming
+  call sends nothing for the whole generation, and a connection silent for
+  minutes can be dropped along the path without notice, leaving the client
+  waiting forever. Streaming keeps bytes moving, and silence becomes a
+  retryable failure. The window is long enough to outlast queue wait at the
+  concurrency above; shorter would kill requests that are only waiting
+  their turn.
+- **Every call has a token budget.** A reasoning model occasionally falls
+  into a repetition loop and generates until its context is exhausted. Each
+  caller states roughly how long a good answer is; that becomes a
+  server-side `num_predict` cap and a client-side ceiling. Tripping either,
+  or a 5-minute deadline, is retried — a fresh sample is almost always fine.
+- **Only transient failures are retried.** A bad key or a retired model
+  surfaces immediately with an explanation instead of burning backoff
+  attempts.
+
+### Errors — `backend/app/errors.py`
+
+Every failure that can reach a user is a sentence saying what broke, why,
+and what to do about it. The layers that touch the outside world — GitHub,
+Ollama Cloud, `git clone` — each translate their own failure modes: missing
+credentials, an invalid or expired key, a private or misspelled repo, a
+retired model, an exhausted quota, a connection that went silent. Anything
+unrecognized is labeled plainly as a bug in this tool rather than dressed up
+as user error.
+
+## The viewer — `frontend/`
+
+React + TypeScript + Vite. The landing page takes a repository URL (or opens
+a built-in fixture demo that needs no network or credentials).
+
+**While an analysis runs**, a stage tracker shows all six stages with
+status, counts and timings, plus a feed of recent events — first as a card
+on the landing page, then, once the partial graph arrives a second or two
+later, as a collapsible HUD over the viewer. Cards whose summary isn't
+written yet show a shimmer, and the map tab unlocks when the last stage
+lands. Polling runs about once a second; the backend sends the graph back
+only when its version changed, so most polls are a few hundred bytes.
+
+A **Map / Folders** switch sits beside the breadcrumbs at every level (or
+press `M`), and it keeps your place: from a file, Map selects that file on
+the map; from a selected map node, Folders lands on that node in the
+explorer.
+
+- **Map** (`ArchitectureView.tsx`, compiled by `mermaid.ts`) — the
+  architecture map as a Mermaid flowchart laid out by ELK, on a freely
+  pannable and zoomable canvas: drag to pan, wheel or pinch to zoom, fit and
+  zoom controls. Both layout directions are tried and the one that fits the
+  viewport larger is kept. Each node shows its name, folder path and the
+  first line of its summary; external systems are greyed hexagons. Clicking
+  a node opens the detail panel with its group and its in/out flows, each
+  tagged import-verified or inferred. An "all imports" toggle overlays every
+  other real import between the map's nodes, so the model's chosen flows can
+  be checked against the whole truth. Mermaid runs in strict security mode
+  with no click directives; node clicks are wired onto the rendered SVG.
+- **Folders** (`Viewer.tsx`, `layout.ts`) — an animated camera over the file
+  graph: folders at the top with the project overview, a folder's files one
+  level in, a single file at the closest zoom.
+
+The **detail panel** shows a node's summary, dependencies and PR history
+(stated and inferred rationale styled differently, confidence visible at a
+glance), and opens the **source viewer**: syntax-highlighted code with a
+function explainer above each definition, a jump list of the file's
+functions, and highlight-to-ask on any span of code.
+
+Files are coloured by kind (`languages.ts`): a hue per language, quieter
+tones for docs and config, generated per theme so both light and dark stay
+legible. The legend lists the kinds on screen. Mermaid, ELK and the syntax
+highlighter are lazy-loaded, so the landing bundle carries none of them.
+
+## Data model
+
+One `Graph` per repository (`backend/app/models.py`, mirrored in
+`frontend/src/types.ts`):
+
+```jsonc
+{
+  "repo_url": "https://github.com/owner/name",   // null for the fixture demo
+  "overview": "…",
+  "resolver_version": 2,
+  "nodes": [{
+    "id": "src/auth/session.py",                 // repo-relative path
+    "type": "file",                              // or "folder"
+    "parent": "src/auth",
+    "summary": "…",
+    "dependencies": ["src/auth/tokens.py"],      // resolved import edges
+    "annotations": ["ann_001"]
+  }],
+  "annotations": [{
+    "id": "ann_001", "node_id": "src/auth/session.py",
+    "source": "pr", "source_ref": "PR #142", "date": "2024-03-11",
+    "rationale_stated": "…",                     // or null
+    "rationale_inferred": null,                  // only when stated is null
+    "confidence": "high",                        // high | medium | low
+    "diff_summary": "…"
+  }],
+  "architecture": {                              // null if none was produced
+    "groups": [{ "id": "core", "label": "Core HTTP", "description": "…" }],
+    "nodes":  [{ "id": "src/auth/session.py", "group": "core" },
+               { "id": "ext:redis", "group": null, "external": true,
+                 "label": "Redis", "description": "…" }],
+    "edges":  [{ "source": "…", "target": "…", "label": "reads cache",
+                 "backed": true }]
+  }
+}
+```
+
+## API
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /health` | Liveness check for the hosting platform |
+| `GET /api/graph` | The fixture demo graph |
+| `GET /api/graph?repo_url=…` | Synchronous analysis. Fine locally; a hosted deployment should use the job endpoints, since a request open for minutes gets cut off by most platforms |
+| `POST /api/analyze` `{repo_url, force_refresh?}` | Returns the cached graph, or starts a background job and returns its `job_id` |
+| `GET /api/analyze/{job_id}?have=N` | Job `status`, `progress` (stages, events, partial-graph version) and the graph — partial while running, omitted when the client already has version `N` |
+| `POST /api/repos/{owner}/{name}/architecture` | Build the map for a cached graph that has none |
+| `POST /api/repos/{owner}/{name}/symbol-explainers` `{path}` | Function explainers for a file; generated on first request, stored after |
+| `GET /api/repos/{owner}/{name}/file?path=…` | A file's source, fetched from GitHub on demand |
+| `GET`/`POST …/rationales`, `…/file-rationales`, `…/project-rationales` | Read stored answers, or ask a question about a code range, a file, or the project |
+
+In production the same FastAPI process also serves the built frontend.
 
 ## Running locally
 
@@ -256,133 +320,84 @@ npm install
 npm run dev
 ```
 
-Open the Vite dev server URL (typically `http://localhost:5173`). Paste a
-GitHub repo URL into the landing page's input (it starts empty, with a
-greyed example of the expected shape) to run the pipeline, or use the
-"Try the interactive demo instead" link to skip the network entirely.
-`https://github.com/psf/requests` is a good first try if you've analyzed
-it before, since cached repos open instantly.
+Open the Vite URL it prints. Paste a GitHub repository URL to analyze it, or
+choose "Try the interactive demo instead". The dev server proxies `/api` to
+the backend on port 8000. `start.sh` runs both together, and is what the
+Replit workspace uses.
 
-After pulling new backend code, restart uvicorn (the command above already
-uses `--reload`, as does `start.sh`). A stale API process behind a fresh
-frontend shows up as "Method Not Allowed" on any endpoint added since it
-started.
+Run the backend with `--reload`: a stale API process behind a fresh frontend
+answers "Method Not Allowed" on any endpoint it doesn't have yet.
 
-## Secrets
+Tests (import resolution, asserting exact edge sets per language):
 
-`OLLAMA_API_KEY` lives in `.env` at the repo root (gitignored, never
-committed). Create/rotate it at
-[ollama.com/settings/keys](https://ollama.com/settings/keys) — the free
-tier needs no card. File summaries and PR rationale run against an
-open-weight model (`gpt-oss:20b` by default) served through Ollama Cloud,
-Ollama's own hosted GPU service — not a model run on this server or in the
-browser. Free-tier usage is quota'd by GPU-time and resets every few hours
-plus a weekly cap, not a flat monthly credit. Override the model via the
-`OLLAMA_MODEL` env var — see the comment above `DEFAULT_MODEL` in
-`backend/app/llm.py` for the current free-tier model list before changing.
+```bash
+cd backend && python -m unittest discover -s tests
+```
 
-GitHub API access goes through `app/github_client.py`: locally it shells
-out to the `gh` CLI's own stored auth (`gh auth login`), so nothing
-GitHub-related needs a secret on your dev machine. A deployed instance has
-no such session, so set `GITHUB_TOKEN` (a personal access token with public
-repo read access) and it switches to calling the API directly instead —
-see `.env.example`.
+## Configuration
+
+Secrets and settings come from the environment; locally, from a gitignored
+`.env` at the repo root (see `.env.example`).
+
+| Variable | Needed | Purpose |
+|---|---|---|
+| `OLLAMA_API_KEY` | Always | Ollama Cloud key, free at [ollama.com/settings/keys](https://ollama.com/settings/keys). Free-tier usage is metered by GPU time and resets every few hours, with a weekly cap |
+| `OLLAMA_MODEL` | Optional | Model override; default `gpt-oss:20b`, the smallest free-tier model, which stretches a time-based quota furthest |
+| `LLM_CONCURRENCY` | Optional | Concurrent model calls, process-wide; default `2` |
+| `GITHUB_TOKEN` | When deployed | Personal access token with public-repo read access. Locally the backend uses the `gh` CLI's own login (`gh auth login`), so no token needs to exist on disk |
+| `CORS_ORIGINS` | When the frontend is on another origin | Comma-separated allowed origins; default `http://localhost:5173` |
+| `VITE_API_BASE` | When the backend is on another origin | Set in `frontend/.env` at build time; default is same-origin |
 
 ## Deployment
 
-Deployed at [repository-explorer.replit.app](https://repository-explorer.replit.app).
-This section covers what makes that work, and what's still worth knowing
-as traffic grows.
+A single Replit **Autoscale** service: one FastAPI process serves both the
+API and the built frontend, and scales to zero when idle. Traffic is
+sporadic, so paying per use (with a Replit spending limit as a ceiling)
+beats a Reserved VM's flat cost. The price is cold starts: the first request
+after an idle period waits a few seconds for an instance to boot, which
+shows in the deploy logs as a transient failed health check.
 
-**Done, to make hosting viable at all:**
-- Analysis runs as an async job (`POST /api/analyze` + polling), so it
-  survives a normal request timeout. Confirmed by running a full job
-  through the poll loop end-to-end (see `backend/app/jobs.py`).
-- GitHub auth works via a portable `GITHUB_TOKEN` env var, not just the
-  local `gh` CLI session — verified the token code path actually makes an
-  authenticated HTTPS call (tested against the real API with a deliberately
-  invalid token, confirming it hits GitHub and fails cleanly rather than
-  silently falling through).
-- CORS origins are configurable (`CORS_ORIGINS` env var) instead of
-  hardcoded to localhost.
-- The frontend's backend URL is configurable at build time (`VITE_API_BASE`
-  in `frontend/.env`) instead of hardcoded to localhost.
-- Added `GET /health` for platform health checks.
-- Every failure that can reach a user is translated into a sentence that
-  says what broke, why, and what to do about it (`backend/app/errors.py`).
-  The layers that touch the outside world — GitHub, Ollama Cloud, `git
-  clone` — each map their own failure modes, so nobody sees an argv dump or
-  an exit code. Missing credentials, an invalid or expired key, a private
-  or misspelled repo, a retired model, and an exhausted free-tier quota all
-  have their own message. Anything unrecognized is labeled plainly as a bug
-  in this tool rather than dressed up as user error.
-- Rate-limit exhaustion is distinguished from a hard quota block. Both can
-  arrive as similar-looking errors, but only the first is worth retrying —
-  a naive retry-everything policy would otherwise burn five backoff
-  attempts (~15s) on a failure that won't resolve within that window.
+Build: `cd frontend && npm ci && npm run build`. Run: uvicorn on port 5000.
+See `replit.md` for the workspace setup. Pushing to GitHub does not update
+the live site; it is republished from Replit's Deploy panel.
 
-**Hosting shape:** a single Replit **Autoscale** service — one FastAPI
-process serves both the API and the built frontend, scaling to zero when
-idle. That's a deliberate choice over Reserved VM (which runs 24/7 at a
-flat cost): this app's traffic is sporadic, not sustained, so paying only
-for actual usage — plus a Replit spending limit as a hard ceiling — beats
-paying a flat rate to stay warm with nobody visiting. The cost of that
-choice is a real one: the first request after an idle period pays a
-few-second cold-start latency while a fresh instance boots, visible as a
-transient failed health check in the deploy logs (not a bug — retry and
-it resolves once the instance is warm).
+Operational facts worth knowing:
 
-**Still worth knowing, if traffic grows:**
-- **The Ollama Cloud free-tier quota** is GPU-time-based, shared across
-  everyone who uses this deployed instance, and resets every few hours plus
-  a weekly cap — much more forgiving than the Gemini free tier this
-  started on (20 requests/*day*), but still a real ceiling under sustained
-  concurrent use. `HF_TOKEN`/Hugging Face was an intermediate backend,
-  since replaced.
-- **Job state is in-memory** (`jobs.py`), not persisted — fine for a single
-  instance, but a restart loses in-progress job status (the finished graph
-  is still safe in `backend/.cache/` once a job completes). Don't run
-  multiple backend instances behind a load balancer without changing this.
-- **No auth/abuse protection** on `/api/analyze` — anyone can point it at
-  any public GitHub repo. Fine for a personal/demo deployment behind an
-  unguessable URL; not fine as a fully public, indexed service.
+- **The model quota is shared** by everyone using a deployed instance, and
+  is the practical limit on analyzing new repos. Cached repos are
+  unaffected.
+- **Job state is in memory** (`jobs.py`). A restart loses the status of
+  in-progress jobs; finished graphs are safe in the cache. Running several
+  backend instances behind a load balancer would need this moved to shared
+  storage first.
+- **The cache is the instance's local disk**, so it is not shared between
+  instances and should not be assumed to survive a redeploy.
+- **There is no authentication or abuse protection** on `/api/analyze`:
+  anyone who can reach it can spend the quota on any public repo. Suitable
+  for a personal deployment, not an indexed public service.
 
-## Known limitations / not yet done
+## Limitations
 
-- Every file in a repo becomes a node with an LLM summary, regardless of
-  language (lockfiles, generated/vendor output, and binary/media files are
-  excluded — see `EXCLUDE_FILE_NAMES`/`EXCLUDE_FILE_SUFFIXES` in
-  `backend/app/parser.py`). Dependency edges cover the languages listed
-  under the import resolver above and are static and best-effort:
-  - C# and Swift get none — their imports name a namespace/module that can
-    span any number of files, so any edge would be a guess.
-  - Go files in the *same* package reference each other with no import
-    statement at all, so a single-package Go repo legitimately shows no
-    edges. A Go import (and a JVM wildcard) names a whole directory; the
-    fan-out to its files is capped at 8.
-  - Anything computed at runtime — `importlib`, `require(variable)`,
-    dependency injection, reflection, bundler aliases declared only in a
-    Vite/Webpack config (beyond the `@/`→`src/` convention) — is invisible
-    to it. Those show up as missing edges, never wrong ones.
-- The viewer's zoom model is 2 levels deep (folder → file); a repo with
-  deeply nested subpackages gets flattened one level.
-- The architecture map's selection and grouping are the model's judgment:
-  which files matter and which layer each belongs to is something the
-  validator can only bound (real nodes, real import edges), not verify.
-  External boxes are the model's claim entirely (there's no file to check
-  them against), as are dashed flows — treat both like an inferred
-  rationale.
-- Function explainers cover Python, JavaScript and TypeScript only, and
-  JS/TS discovery is pattern-based: an unusual declaration style may be
-  missed, and a symbol the model skips simply has no explainer.
-- Annotation mining is capped at the 40 most recently updated merged PRs
-  per repo, filtered down to non-trivial ones — a deliberate cost/latency
-  tradeoff, not full history. A repo with very little PR history (like
-  `scribe-dictation`) will surface only a handful of annotations, which is
-  correct behavior (the brief calls for degrading to mostly-null rather
-  than fabricating), not a bug.
-- Free-tier Ollama Cloud quota is the practical bottleneck on fresh
-  analysis of new repos (cached repos are unaffected) — see the Deployment
-  section above for how that resets.
-- No "generate a build-your-own playbook" feature — out of scope for v1 per
-  the build brief.
+- **Dependency edges are static and best-effort.** C# and Swift get none,
+  because their imports name a namespace that can span any number of files.
+  Go files in the same package reference each other with no import
+  statement, so a single-package Go repo legitimately shows no edges. A Go
+  import or JVM wildcard names a whole directory, and the fan-out to its
+  files is capped at 8. Anything resolved at runtime — `importlib`,
+  `require(variable)`, dependency injection, reflection, bundler aliases
+  declared only in a Vite or Webpack config — is invisible. These show up as
+  missing edges, never wrong ones.
+- **The map is the model's judgment.** Which files matter and which layer
+  each belongs to can be bounded by the validator (real nodes, real import
+  edges) but not verified. External systems and dashed flows are the model's
+  claim entirely; read them like an inferred rationale. Two analyses of the
+  same repo can produce different maps.
+- **Function explainers** cover Python, JavaScript and TypeScript. JS/TS
+  discovery is pattern-based, so an unusual declaration style can be missed,
+  and a symbol the model skips simply has no explainer.
+- **PR history is a window, not the whole record**: the 40 most recently
+  updated merged PRs, filtered to substantive ones. A repo with little PR
+  discipline surfaces few annotations, which is the intended behaviour.
+- **The folder explorer is two levels deep** (folder → file); deeper
+  subpackages are flattened into their top-level folder.
+- **One repository at a time**, public GitHub repositories only.

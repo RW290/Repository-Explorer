@@ -1,8 +1,10 @@
 """Data model for the graph the frontend consumes.
 
-Mirrors the two top-level entities from the build brief: graph nodes (one
-per file or folder) and annotations (one per significant historical change,
-attached to a node by id).
+The two core entities are graph nodes (one per file or folder) and
+annotations (one per significant historical change, attached to a node by
+id). `rationale_stated` and `rationale_inferred` are separate fields on
+purpose and are never merged: what an author said and what the model guessed
+must stay distinguishable everywhere downstream.
 """
 
 from typing import Literal
@@ -77,7 +79,7 @@ class Architecture(BaseModel):
 class Graph(BaseModel):
     nodes: list[GraphNode]
     annotations: list[Annotation]
-    # None for the phase-1 fixture demo, which isn't backed by a real GitHub
+    # None for the fixture demo, which isn't backed by a real GitHub
     # repo — the frontend uses this to decide whether source-viewing and
     # line rationale are available at all.
     repo_url: str | None = None
@@ -90,8 +92,8 @@ class Graph(BaseModel):
     # existed — the frontend asks for a lazy backfill in that case.
     architecture: Architecture | None = None
     # Which generation of the import resolver produced `dependencies` (see
-    # imports.RESOLVER_VERSION). Analyses from before the field existed were
-    # Python-only, i.e. version 1.
+    # imports.RESOLVER_VERSION). A cached graph without the field counts as
+    # version 1 (Python-only edges) and gets its edges refreshed on open.
     resolver_version: int = 1
 
 

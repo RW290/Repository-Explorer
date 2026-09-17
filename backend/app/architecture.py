@@ -50,11 +50,12 @@ MAX_ATTEMPTS = 2
 # Cool sampling: this is a structured-output task where the second run
 # over the same repo should look like the first, not a creative one.
 TEMPERATURE = 0.2
-# Low reasoning effort. Measured on psf/requests: 17s at "low" against ~300s
-# at the default, for maps of the same quality (same kind of groups, real
-# members, sensible labeled flows). The prompt is ~29k characters of listing,
-# and at default effort the model deliberates over all of it at length; the
-# validator below — not the model's care — is what guarantees integrity.
+# Low reasoning effort: on a repo the size of psf/requests the map takes
+# about 17s at "low" against about 300s at the default, for maps of the same
+# quality (the same kind of groups, real members, sensible labeled flows).
+# The prompt is ~29k characters of listing, and at default effort the model
+# deliberates over all of it at length; the validator below — not the model's
+# care — is what guarantees integrity.
 EFFORT = "low"
 # A repair round is a whole second model call, so it's reserved for a map
 # that is actually unusable or lost a real share of itself to validation. A

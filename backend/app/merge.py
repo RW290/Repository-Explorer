@@ -1,4 +1,4 @@
-"""Merge (phase 4): attach mined annotations to parsed graph nodes."""
+"""Merge: attach mined PR annotations to the parsed graph nodes they touched."""
 
 from app.miner import RawPR
 from app.parser import ParsedNode

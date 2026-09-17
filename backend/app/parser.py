@@ -1,4 +1,4 @@
-"""Architecture parser (phase 2): local static analysis, no LLM for the graph shape.
+"""Repository parser: local static analysis, no LLM for the graph shape.
 
 Clones the target repo, discovers every file worth showing, and builds a
 file-level dependency graph from import statements — best-effort static
@@ -337,8 +337,8 @@ def summarize_files(
         # slack. A fuse against runaway generation, not a length target.
         budget = 600 + len(batch) * (700 if tier == "source" else 220)
         result: dict[str, str] = {}
-        # One malformed reply used to blank the whole batch; ask once more
-        # before giving up, and keep whatever did parse.
+        # A malformed reply must not blank the whole batch: keep whatever
+        # parsed, and ask once more for only the files still missing.
         remaining = batch
         for _ in range(2):
             ask = prompt if remaining is batch else _summary_prompt(remaining, tier)

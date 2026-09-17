@@ -7,7 +7,7 @@ poll for status, rather than blocking one HTTP request on the whole thing.
 
 State is process-local (a plain dict), which is fine for a single instance;
 it does not survive a restart or scale past one process. That's an
-acceptable v1 tradeoff — the finished result is what gets cached to disk
+acceptable tradeoff — the finished result is what gets cached to disk
 (see pipeline.py), not the job's in-memory status.
 """
 

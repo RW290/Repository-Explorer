@@ -137,9 +137,9 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
   // added.
   const folderBandH = hasOverviewCard ? viewportH * OVERVIEW_BAND_REMAINDER : viewportH;
   // The floor is only there to stop absurd shrinkage, not to hold cards at
-  // full size: a 1.05 floor meant six folders couldn't fit the band on a
-  // 1280x720 screen and the bottom row ran off-canvas. Roomy screens still
-  // land near the 1.35 ceiling on their own.
+  // full size: a floor near 1.0 can't fit six folders into the band on a
+  // 1280x720 screen, and the bottom row runs off-canvas. Roomy screens land
+  // near the 1.35 ceiling on their own.
   const repoScale = useMemo(
     () => fitScale(topFolderPositions, canvasW, folderBandH, 0.5, 1.35),
     [topFolderPositions, canvasW, folderBandH],
@@ -179,10 +179,10 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
     [selectedNodeId, positions, canvasW, viewportH, folderScale],
   );
 
-  // Falls back rather than indexing blindly: any level/selection combination
-  // that leaves no position to aim at used to dereference undefined here and
-  // take the whole app down with it, which is far too harsh a failure for a
-  // camera that could simply stay where it is.
+  // Falls back rather than indexing blindly: a level/selection combination
+  // that leaves no position to aim at would otherwise dereference undefined
+  // and take the whole app down, which is far too harsh a failure for a
+  // camera that can simply stay where it is.
   const target =
     (level === "repo"
       ? repoCenter

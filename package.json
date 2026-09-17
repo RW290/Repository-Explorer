@@ -1,7 +1,7 @@
 {
   "name": "workspace",
   "version": "1.0.0",
-  "description": "Ingests a GitHub repo and produces an explorable, animated visualization of its architecture, annotated with *why* things are the way they are — pulled from PR descriptions and linked issues. See [`repo-breakdown-build-brief.md`](repo-breakdown-build-brief.md) for the full design.",
+  "description": "Turns a public GitHub repository into an explorable map of its architecture: files, dependencies, semantic layers, and the reasoning behind changes, drawn from its pull requests.",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"

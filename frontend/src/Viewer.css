@@ -124,8 +124,8 @@
 }
 
 /* Scoped to .world: Mermaid also names its diagram nodes `.node`, and an
-   unscoped rule here (absolute positioning, a -50% translate) once dragged
-   every map node thousands of pixels off-canvas. */
+   unscoped rule here (absolute positioning, a -50% translate) would apply to
+   them too and throw every map node thousands of pixels off-canvas. */
 .world .node {
   position: absolute;
   width: 196px;

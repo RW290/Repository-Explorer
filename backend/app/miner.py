@@ -1,4 +1,4 @@
-"""History miner (phase 3): PR extraction via the GitHub GraphQL API.
+"""History miner: PR rationale extraction via the GitHub GraphQL API.
 
 Goes through app.github_client (gh CLI locally, GITHUB_TOKEN when
 deployed) rather than handling auth itself. One GraphQL call fetches a
@@ -155,13 +155,13 @@ def extract_rationales(owner: str, name: str, prs: list[RawPR], reporter: Report
 
     def run(batch: list[dict]) -> list[dict]:
         prompt = _extraction_prompt(batch)
-        # Default reasoning effort, unlike every other prompt here — measured,
-        # not assumed. At "low" the stated/inferred/confidence labels came out
-        # identical, but the text regressed to quoting the author ("Honestly I
-        # have no idea why this lib used netloc…", or a bare link) where the
-        # default states the engineering reason ("prevents the credential leak
-        # disclosed in CVE-2024-47081"). That restatement is the product. It
-        # costs ~16s a batch against ~10s, and runs alongside the summaries.
+        # Default reasoning effort, unlike every other prompt here. At "low" the
+        # stated/inferred/confidence labels come out the same, but the text
+        # degrades to quoting the author ("Honestly I have no idea why this
+        # lib used netloc…", or a bare link) where the default states the
+        # engineering reason ("prevents the credential leak disclosed in
+        # CVE-2024-47081"). That restatement is the product. It costs ~16s a
+        # batch against ~10s, and runs alongside the summaries.
         raw = call_with_retry(lambda: call_llm(prompt, max_tokens=3500 + len(batch) * 500))
         cleaned = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
         try:

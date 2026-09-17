@@ -1,7 +1,7 @@
 """API server for the repo breakdown viewer.
 
-GET /api/graph with no query params serves the phase-1 fixture (kept as a
-zero-cost, zero-latency demo).
+GET /api/graph with no query params serves the fixture demo: a hand-written
+graph that needs no network, credentials or model calls.
 
 Analyzing a real repo is async: POST /api/analyze starts the pipeline in a
 background job (or returns the cached result immediately if there is one)
