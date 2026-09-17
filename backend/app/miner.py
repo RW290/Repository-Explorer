@@ -9,6 +9,7 @@ batched per the latency constraint.
 """
 
 import json
+import re
 import time
 from dataclasses import dataclass
 
@@ -24,6 +25,7 @@ MIN_RATIONALE_CHARS = 40
 TRIVIAL_PATH_SUFFIXES = (".lock", ".yml", ".yaml", ".md", ".rst", ".txt", ".toml", ".cfg", ".ini")
 TRIVIAL_PATH_PREFIXES = (".github/",)
 RATIONALE_BATCH_SIZE = 5
+EFFORT = "low"
 
 GRAPHQL_QUERY = """
 query($owner: String!, $name: String!, $cursor: String) {
@@ -123,9 +125,11 @@ precisely they're explained.
 
 Return ONLY a JSON array of objects, one per PR, each with these exact fields:
 - "number": the PR number (integer)
-- "rationale_stated": if a "Stated description" is given, a precise 1-2
-  sentence account of the author's own stated reason — faithful to what
-  they actually said. If none is given, null.
+- "rationale_stated": if a "Stated description" is given, the author's own
+  reason restated in 1-2 sentences of your own words. Faithful to what they
+  meant, but never copied: no sentences lifted from the description, no
+  first person ("I noticed…"), no links, no checklists. Say what the
+  engineering reason was. If no description is given, null.
 - "rationale_inferred": only fill this in if there was no stated description —
   your best 1-2 sentence technical guess at the reason, based solely on
   the diff. Otherwise null.
@@ -142,6 +146,33 @@ Pull requests:
 """
 
 
+def parse_extractions(raw: str) -> list[dict]:
+    """The model's JSON array of extractions, tolerantly. Replies arrive
+    wrapped in fences or prose, or cut off mid-array; every complete object is
+    kept, so one malformed reply costs the broken entries, not the batch."""
+    cleaned = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    for candidate in (cleaned, cleaned[cleaned.find("[") : cleaned.rfind("]") + 1] if "[" in cleaned else ""):
+        if not candidate:
+            continue
+        try:
+            data = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(data, list):
+            return [d for d in data if isinstance(d, dict)]
+    salvaged = []
+    # Extraction objects are flat (no nested braces), so each complete one
+    # can be lifted out on its own.
+    for match in re.finditer(r"\{[^{}]*\}", cleaned):
+        try:
+            item = json.loads(match.group(0))
+        except json.JSONDecodeError:
+            continue
+        if isinstance(item, dict) and "number" in item:
+            salvaged.append(item)
+    return salvaged
+
+
 def extract_rationales(owner: str, name: str, prs: list[RawPR], reporter: Reporter | None = None) -> list[dict]:
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -155,22 +186,20 @@ def extract_rationales(owner: str, name: str, prs: list[RawPR], reporter: Report
 
     def run(batch: list[dict]) -> list[dict]:
         prompt = _extraction_prompt(batch)
-        # Default reasoning effort, unlike every other prompt here. At "low" the
-        # stated/inferred/confidence labels come out the same, but the text
-        # degrades to quoting the author ("Honestly I have no idea why this
-        # lib used netloc…", or a bare link) where the default states the
-        # engineering reason ("prevents the credential leak disclosed in
-        # CVE-2024-47081"). That restatement is the product. It costs ~16s a
-        # batch against ~10s, and runs alongside the summaries.
-        raw = call_with_retry(lambda: call_llm(prompt, max_tokens=3500 + len(batch) * 500))
-        cleaned = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-        try:
-            results = json.loads(cleaned)
-            if isinstance(results, list):
-                return [r for r in results if isinstance(r, dict)]
-        except json.JSONDecodeError:
-            pass
-        return [
+        # Low reasoning effort, like the other prompts — decided by the eval
+        # harness (`python -m evals run prs --variant default --variant
+        # low:think=low`), not by reading one output. Both efforts score the
+        # same on every check (coverage, stated/inferred kind, confidence,
+        # verbatim overlap with the author) and read the same side by side;
+        # low is ~25% faster, and this is the longest stage of an analysis.
+        # What actually stops the model quoting the author instead of stating
+        # the reason is the prompt's "restated… never copied" rule, which took
+        # mean verbatim overlap from 0.77 to under 0.03 at either effort.
+        raw = call_with_retry(lambda: call_llm(prompt, think=EFFORT, max_tokens=1200 + len(batch) * 500))
+        results = parse_extractions(raw)
+        returned = {r.get("number") for r in results}
+        # Whatever the reply didn't cover still gets an entry, marked as such.
+        results.extend(
             {
                 "number": item["number"],
                 "rationale_stated": item["stated"],
@@ -179,7 +208,9 @@ def extract_rationales(owner: str, name: str, prs: list[RawPR], reporter: Report
                 "diff_summary": "Diff summary unavailable (LLM response could not be parsed).",
             }
             for item in batch
-        ]
+            if item["number"] not in returned
+        )
+        return results
 
     extractions: list[dict] = []
     done = 0

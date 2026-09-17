@@ -1,0 +1,46 @@
+{
+  "prs": {
+    "psf/requests": {
+      "coverage": 1.0,
+      "stated_and_inferred_both_set": 0,
+      "neither_set": 0,
+      "kind_matches_input": 1.0,
+      "confidence_consistent": 1.0,
+      "verbatim_overlap_mean": 0.021,
+      "verbatim_overlap_max": 0.105,
+      "calls": 2,
+      "seconds": 77.0,
+      "parse_failures": 0
+    }
+  },
+  "summaries": {
+    "psf/requests": {
+      "coverage": 1.0,
+      "length_in_bounds": 1.0,
+      "source_mean_chars": 1143,
+      "brief_mean_chars": 452,
+      "boilerplate_opening": 0.125,
+      "uses_code_markup": 1.0,
+      "calls": 2,
+      "seconds": 82.4,
+      "parse_failures": 0
+    }
+  },
+  "map": {
+    "psf/requests": {
+      "usable": 1.0,
+      "members_resolved": 1.0,
+      "edges_kept": 1.0,
+      "members": 24,
+      "edges": 20,
+      "groups": 5,
+      "externals": 5,
+      "edges_backed_by_imports": 0.6,
+      "empty_edge_labels": 0.0,
+      "validation_problems": 0,
+      "calls": 1,
+      "seconds": 63.9,
+      "parse_failures": 0
+    }
+  }
+}

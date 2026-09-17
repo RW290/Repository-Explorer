@@ -7,6 +7,8 @@ project's own pull requests — *why* things are the way they are.
 
 **Live**: [repository-explorer.replit.app](https://repository-explorer.replit.app)
 
+[`DECISIONS.md`](DECISIONS.md) is the decision log: what was decided, why,
+what else was considered, the evidence, and how to challenge it.
 [`AI_ENGINEERING.md`](AI_ENGINEERING.md) walks through the AI engineering
 ideas used here — context engineering, structured output and validation,
 grounding, cost and latency control, reliability around a remote model —
@@ -187,11 +189,10 @@ changing that function's body. How it calls matters more than which model:
 - **Reasoning effort is the largest latency lever.** At default effort the
   model writes roughly 9,000 characters of hidden reasoning to produce a
   5,000-character batch of summaries; at `think="low"` it writes about 50,
-  in half the time, with summaries of the same quality. Summaries, the
-  overview, the map, function explainers and interactive answers run low.
-  PR rationale keeps the default: at low effort the stated/inferred labels
-  are the same but the text degrades to quoting the author instead of
-  stating the engineering reason, and that restatement is the product.
+  in half the time, with summaries of the same quality. Every call site
+  runs low. Each setting is checked by the eval harness rather than by eye:
+  for PR rationale, both efforts score the same on every check and read the
+  same side by side, and low is about 25% faster.
 - **Concurrency is capped at 2**, by one process-wide semaphore
   (`LLM_CONCURRENCY`) so simultaneous analyses share the ceiling. The
   provider mostly queues concurrent requests rather than running them in
@@ -377,11 +378,52 @@ Replit workspace uses.
 Run the backend with `--reload`: a stale API process behind a fresh frontend
 answers "Method Not Allowed" on any endpoint it doesn't have yet.
 
-Tests (import resolution, asserting exact edge sets per language):
+Tests (import resolution asserting exact edge sets per language, and the
+eval scorers):
 
 ```bash
 cd backend && python -m unittest discover -s tests
 ```
+
+## Evaluating model output
+
+Unit tests can't say whether a summary is *good*. The eval harness
+(`backend/evals/`) measures it, repeatably:
+
+```bash
+cd backend
+python -m evals freeze psf/requests        # save a repo's inputs (no model calls)
+python -m evals check-graph .cache/psf__requests.json   # score a finished analysis (free)
+python -m evals run prs --variant default --variant low:think=low
+python -m evals run summaries --variant prod --sample 8
+python -m evals judge summaries low default --sample 6
+python -m evals accept evals/results/<file>.json low    # record a baseline
+```
+
+- **Frozen cases** (`evals/cases/`): the exact files, pull requests and
+  summarized graph each model call site sees, pinned to a commit and checked
+  in, so two runs differ only in what was changed on purpose.
+- **Suites** run one call site — file summaries, PR rationale, the
+  architecture map — with the production prompt and parser under a named
+  *variant* (reasoning effort, temperature, model). Evaluating a call site
+  rather than the whole pipeline keeps a run to a handful of calls and makes
+  a moved number attributable to one prompt.
+- **Scorers** (`checks.py`, unit-tested) are plain code, each named for a
+  failure that has actually happened here: coverage (a malformed reply
+  blanking a batch), summary length per tier, verbatim overlap with the PR
+  author (quoting instead of stating the reason), stated and inferred never
+  both set, confidence matching kind, map members that resolve to real files,
+  empty edge labels, share of flows backed by imports. Hand labels in a
+  case's `labels.json` add accuracy against a person's judgment.
+- **A model judge** (`judge.py`) compares two variants' summaries pairwise
+  for what code can't score — accuracy to the file, explaining design. It
+  uses a stronger model than the one being judged, randomizes order, and
+  reports how often position A won, which should sit near 50%.
+- **Gates** are absolute floors that fail the run; a saved **baseline**
+  shows drift in numbers that still pass. A provider outage is reported as
+  such, not scored.
+
+[`DECISIONS.md`](DECISIONS.md) records what these runs have decided so far.
 
 ## Configuration
 

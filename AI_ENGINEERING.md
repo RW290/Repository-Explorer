@@ -216,11 +216,13 @@ model, the biggest one is how much it thinks before answering.
   with summaries of the same quality. The architecture map takes about 17
   seconds at low effort against about 300 at default. Summarizing is recall
   and phrasing, not deduction, so the reasoning bought nothing.
-- *Matching effort to the task, by measurement.* PR rationale keeps default
-  effort. At low effort its labels came out the same but its text degraded
-  to quoting the author ("Honestly I have no idea why this lib used
-  netloc…") instead of stating the engineering reason. The setting for each
-  task was chosen by running both and reading the outputs, not assumed.
+- *Matching effort to the task, by measurement — and the measurement has
+  to be a real one.* PR rationale was first kept at default effort, because
+  one hand comparison showed low effort quoting the author verbatim. The
+  eval harness then showed the reverse on its first run, and equal scores
+  once the prompt was fixed: the quoting was sampling noise at either
+  setting, and one sample per setting had been mistaken for a pattern. Every
+  call site now runs low, and each is checked by `python -m evals run`.
 - *Temperature.* Structured tasks (the map, function explainers) run at 0.2
   so two analyses of one repo resemble each other. Prose runs at the default.
 - *Output caps.* Every call passes `max_tokens`, enforced by the provider.
@@ -377,16 +379,32 @@ constrained JSON and prompt caching.
 **The idea.** You cannot improve what you do not measure, and model output
 quality does not show up in unit tests.
 
-**Here, what exists.** The deterministic parts are properly tested: 18 cases
-asserting exact dependency edges per language
-(`backend/tests/test_imports.py`). Model-facing decisions were made by
-side-by-side comparison on real inputs: reasoning effort per task, the
-concurrency level, the effect of prompt changes on the map.
+**Here.** The deterministic parts are unit-tested: exact dependency edges
+per language, and the eval scorers themselves. Model output is measured by
+the harness in `backend/evals/`:
 
-**Here, what is missing.** There is no evaluation set and no automated
-quality check on model output. Nothing would catch a prompt change that made
-summaries worse, or a provider silently swapping the model. The honest
-description of the current state is "measured once by hand, then trusted".
+- *Frozen inputs*, pinned to a commit and checked in, so a run differs from
+  the last only in what was changed on purpose.
+- *Component-level suites*: one per call site (summaries, PR rationale, the
+  map), running the production prompt and parser under a named variant. A
+  handful of calls per run, and a moved number has one prompt to blame.
+- *Code scorers chosen from real failures*: coverage, length per tier,
+  verbatim overlap with the PR author, the stated/inferred integrity checks,
+  map members that resolve, empty edge labels, import-backed flows.
+- *A pairwise model judge* for what code can't score, with a stronger model,
+  randomized order and a reported position bias.
+- *Gates* (absolute floors) and a saved *baseline* (drift).
+
+Its first use overturned a decision made by eye and located the real cause
+in a prompt: asking for an account "faithful to what they actually said"
+invited copying, and "restated, never copied" took mean verbatim overlap
+with the author from 0.77 to 0.005.
+
+**What is still missing.** One eval case (psf/requests) is a thin sample. No
+hand labels are filled in, the judge is not yet calibrated against a person,
+and its samples so far are too small to conclude from. It did flag
+unsupported claims in summaries at both effort levels, which is the next
+quality problem to measure properly. Nothing runs in CI yet.
 
 ---
 
@@ -400,7 +418,6 @@ description of the current state is "measured once by hand, then trusted".
 | **Fine-tuning** | Train the model on your task | A general model with a good prompt is sufficient, and there is no labeled data | A high-volume narrow task where a small tuned model could replace a large one |
 | **Prompt caching** | The provider reuses computation for a repeated prompt prefix | Not exposed by this provider | Every summary call repeats the same framing paragraph; caching it would cut input cost |
 | **Semantic caching** | Reuse an answer for a *similar* earlier question | Only exact repeats are reused today | A busy deployment where many people ask near-identical questions |
-| **Evals and LLM-as-judge** | An automated test suite for output quality | Not built yet (section 14) | Before the next prompt or model change. It is the most valuable missing piece |
 | **Guardrails / moderation** | Filter inputs and outputs for unsafe content | Output is technical prose about public code, with no actions attached | Any user-generated input beyond a repo URL, or any tool access |
 
 ## Where each concept lives
@@ -422,6 +439,7 @@ description of the current state is "measured once by hand, then trusted".
 | Streaming, timeouts, runaway guard, retries | `llm._stream_to_text`, `llm.call_with_retry`, `errors.py` |
 | Progressive delivery | `progress.py`, `pipeline.run_pipeline`, `frontend/src/AnalysisProgress.tsx` |
 | Untrusted output | `frontend/src/markdown.tsx`, `frontend/src/mermaid.ts` |
+| Evaluation | `backend/evals/` (`cases.py`, `suites.py`, `checks.py`, `judge.py`) |
 
 ---
 
@@ -450,9 +468,9 @@ the measured 594s → 204s instead.
   effort per task, reducing one stage from ~300s to 17s with no quality loss.
   - *Speak to:* why output tokens drive latency in autoregressive models;
     how you found it (timed one call, inspected the reasoning field) rather
-    than guessing; and that you verified quality side by side, which is how
-    you caught the one task where low effort made the output worse and kept
-    it at full effort.
+    than guessing; and the honest follow-up: a by-eye comparison first
+    suggested one task needed full effort, and the eval harness later showed
+    that was noise from a single sample.
 - Reduced **time-to-first-useful-result from minutes to 1.5 seconds** by
   restructuring a batch pipeline to publish partial results: static analysis
   completes first and renders immediately, while LLM-generated content
@@ -523,6 +541,24 @@ the measured 594s → 204s instead.
   - *Speak to:* why regex plus per-language resolution beat shipping a
     parser toolchain per language; why tests assert exact sets (an extra
     edge is as wrong as a missing one); the documented blind spots.
+
+**Evaluation**
+
+- Built an **LLM evaluation harness** with frozen, version-pinned inputs,
+  component-level suites per model call site, code-based scorers derived
+  from observed failures, a pairwise model judge with order randomization
+  and position-bias reporting, and pass/fail gates against a baseline.
+  - *Speak to:* why component evals beat end-to-end for attribution and
+    cost; why pairwise beats absolute scoring; judge bias and calibration;
+    choosing metrics from real incidents rather than guesses.
+- Used it to **overturn my own earlier decision**: a manual comparison had
+  suggested one task needed high reasoning effort; the harness showed the
+  effect was sampling noise, traced the real cause to prompt wording, and
+  verified the fix (verbatim-copy rate **0.77 → 0.005**) while cutting that
+  stage's latency ~25%.
+  - *Speak to:* this is the strongest story in the project. One sample per
+    condition is an anecdote; the fix belonged in the prompt, not a model
+    setting; and you can name the limits (one repo, one run per variant).
 
 **Product and frontend**
 
