@@ -68,3 +68,18 @@ def load_project_rationales(owner: str, name: str) -> list[dict]:
 
 def add_project_rationale(owner: str, name: str, entry: dict) -> None:
     _add(owner, name, "project_rationales", entry)
+
+
+def load_symbol_explainers(owner: str, name: str, path: str | None = None) -> list[dict]:
+    return _load(owner, name, "symbol_explainers", path)
+
+
+def replace_symbol_explainers(owner: str, name: str, path: str, entries: list[dict]) -> None:
+    """Explainers are generated for a whole file at once, so they're
+    replaced as a set for that path rather than appended one at a time."""
+    store_path = _store_path(owner, name, "symbol_explainers")
+    with _lock:
+        existing = json.loads(store_path.read_text()) if store_path.exists() else []
+        kept = [e for e in existing if e["path"] != path]
+        CACHE_DIR.mkdir(exist_ok=True)
+        store_path.write_text(json.dumps(kept + entries, indent=2))
