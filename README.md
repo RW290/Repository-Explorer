@@ -169,10 +169,17 @@ npm install
 npm run dev
 ```
 
-Open the Vite dev server URL (typically `http://localhost:5173`). The
-landing page defaults to `https://github.com/psf/requests` (already
-cached); type a different repo URL to run the pipeline fresh, or use the
-"load the phase-1 fixture demo instead" link to skip the network entirely.
+Open the Vite dev server URL (typically `http://localhost:5173`). Paste a
+GitHub repo URL into the landing page's input (it starts empty, with a
+greyed example of the expected shape) to run the pipeline, or use the
+"Try the interactive demo instead" link to skip the network entirely.
+`https://github.com/psf/requests` is a good first try if you've analyzed
+it before, since cached repos open instantly.
+
+After pulling new backend code, restart uvicorn (the command above already
+uses `--reload`, as does `start.sh`). A stale API process behind a fresh
+frontend shows up as "Method Not Allowed" on any endpoint added since it
+started.
 
 ## Secrets
 

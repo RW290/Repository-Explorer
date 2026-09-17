@@ -14,7 +14,10 @@ export function App() {
   const [status, setStatus] = useState<Status>("idle");
   const [stage, setStage] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [repoUrl, setRepoUrl] = useState("https://github.com/psf/requests");
+  // Starts empty: the input shows a greyed placeholder as an example of the
+  // expected shape, not a real value that gets analyzed if you just hit the
+  // button.
+  const [repoUrl, setRepoUrl] = useState("");
   const pollTimer = useRef<number | null>(null);
   const [theme, setTheme] = useState<Theme>(() =>
     window.localStorage.getItem("repo-explorer-theme") === "dark" ? "dark" : "light",
@@ -69,6 +72,7 @@ export function App() {
   }
 
   function analyze() {
+    if (!repoUrl.trim()) return;
     stopPolling();
     setStatus("loading");
     setStage("");
@@ -139,11 +143,16 @@ export function App() {
                 className="landing__input"
                 value={repoUrl}
                 onChange={(e) => setRepoUrl(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") analyze();
+                }}
                 placeholder="https://github.com/owner/repo"
+                autoComplete="off"
+                spellCheck={false}
                 disabled={status === "loading"}
               />
             </div>
-            <button className="landing__button" onClick={analyze} disabled={status === "loading"}>
+            <button className="landing__button" onClick={analyze} disabled={status === "loading" || !repoUrl.trim()}>
               {status === "loading" ? <Spinner size="sm" /> : <>Analyze repo <span aria-hidden="true">→</span></>}
             </button>
           </div>

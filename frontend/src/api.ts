@@ -134,13 +134,25 @@ export async function buildArchitecture(
   name: string,
   forceRefresh = false,
 ): Promise<Architecture | null> {
-  const result = await asJson<{ architecture: Architecture | null }>(
-    await fetch(`${API_BASE}/api/repos/${owner}/${name}/architecture`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ force_refresh: forceRefresh }),
-    }),
-  );
+  const res = await fetch(`${API_BASE}/api/repos/${owner}/${name}/architecture`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ force_refresh: forceRefresh }),
+  });
+  // A backend from before this endpoint existed has no POST route here, so
+  // the request falls through to its catch-all GET route and comes back 405
+  // (or 404). That's a stale server, not a problem with the repo — say so,
+  // instead of surfacing a bare "Method Not Allowed".
+  if (res.status === 405 || res.status === 404) {
+    const body = await res.clone().json().catch(() => null);
+    if (!body?.detail || body.detail === "Method Not Allowed" || body.detail === "Not Found") {
+      throw new Error(
+        "The backend is running an older version that doesn't have the architecture-map endpoint yet. " +
+          "Restart (or redeploy) the backend so it picks up the new code, then try again.",
+      );
+    }
+  }
+  const result = await asJson<{ architecture: Architecture | null }>(res);
   return result.architecture;
 }
 
@@ -148,11 +160,14 @@ export async function buildArchitecture(
 // for a file generates them (one batched LLM call, tens of seconds); later
 // calls return the stored set.
 export async function ensureSymbolExplainers(owner: string, name: string, path: string): Promise<SymbolExplainer[]> {
-  return asJson(
-    await fetch(`${API_BASE}/api/repos/${owner}/${name}/symbol-explainers`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path }),
-    }),
-  );
+  const res = await fetch(`${API_BASE}/api/repos/${owner}/${name}/symbol-explainers`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+  // Same stale-backend signature as buildArchitecture above.
+  if (res.status === 405) {
+    throw new Error("The backend is running an older version without function explainers. Restart or redeploy it.");
+  }
+  return asJson(res);
 }
