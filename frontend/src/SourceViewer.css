@@ -375,3 +375,99 @@ html[data-theme="light"] .hljs-template-variable { color: #116329; }
 html[data-theme="light"] .hljs-params { color: #273142; }
 html[data-theme="light"] .hljs-meta { color: #4b5c7a; }
 html[data-theme="light"] .hljs-deletion { color: #b93b47; }
+
+/* --- Proactive function explainers -------------------------------------- */
+
+.source-explainer {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 6px 10px 2px 52px;
+  padding: 5px 9px;
+  border: 1px solid rgba(101, 216, 196, .22);
+  border-left-width: 3px;
+  border-radius: 6px;
+  background: rgba(101, 216, 196, .06);
+  color: #b9c0cc;
+  font-family: "Manrope", sans-serif;
+  font-size: .7rem;
+  line-height: 1.45;
+  user-select: none;
+}
+.source-explainer--class { border-color: rgba(255, 203, 107, .28); border-left-color: #ffcb6b; background: rgba(255, 203, 107, .06); }
+.source-explainer--method { border-left-color: rgba(101, 216, 196, .6); }
+.source-explainer__gutter { color: #65d8c4; font-size: .62rem; line-height: 1.6; }
+.source-explainer--class .source-explainer__gutter { color: #ffcb6b; }
+.source-explainer__name { color: #e8e7f2; font-family: "DM Mono", monospace; font-size: .66rem; font-weight: 600; }
+.source-explainer__name::after { content: " —"; color: #6b7089; }
+
+.source-viewer__toggle {
+  flex: none;
+  margin: 0 10px 0 12px;
+  padding: 5px 10px;
+  border: 1px solid #303240;
+  border-radius: 7px;
+  background: #1d1e29;
+  color: #878b9e;
+  cursor: pointer;
+  font-family: "DM Mono", monospace;
+  font-size: .62rem;
+  letter-spacing: .04em;
+}
+.source-viewer__toggle--on { border-color: rgba(101, 216, 196, .4); color: #65d8c4; }
+.source-viewer__toggle:hover { color: #e8e7f2; }
+
+.source-viewer__explaining { display: flex; align-items: center; gap: 8px; color: #65d8c4 !important; font-size: .72rem; }
+.source-viewer__explaining--error { color: #f0787d !important; }
+
+.symbol-list { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.symbol-list button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #c7c9d3;
+  cursor: pointer;
+  font-family: "DM Mono", monospace;
+  font-size: .68rem;
+  text-align: left;
+}
+.symbol-list button:hover .symbol-list__name { color: #f0eff7; text-decoration: underline; text-underline-offset: 3px; }
+.symbol-list__kind { padding: 1px 5px; border-radius: 4px; background: rgba(101,216,196,.12); color: #65d8c4; font-size: .56rem; }
+.symbol-list__kind--class { background: rgba(255,203,107,.12); color: #ffcb6b; }
+.symbol-list__name { overflow-wrap: anywhere; }
+.symbol-list__text { margin: 3px 0 0; color: #868aa0; font-size: .7rem; line-height: 1.45; }
+
+html[data-theme="light"] .source-explainer {
+  border-color: rgba(22, 139, 122, .25);
+  background: rgba(22, 139, 122, .06);
+  color: #4a5464;
+}
+html[data-theme="light"] .source-explainer--class { border-color: rgba(149, 56, 0, .25); border-left-color: #b8651a; background: rgba(184, 101, 26, .06); }
+html[data-theme="light"] .source-explainer__gutter { color: #168b7a; }
+html[data-theme="light"] .source-explainer--class .source-explainer__gutter { color: #b8651a; }
+html[data-theme="light"] .source-explainer__name { color: #273142; }
+html[data-theme="light"] .source-explainer__name::after { color: #9aa3b1; }
+html[data-theme="light"] .source-viewer__toggle { border-color: #dcdfe8; background: #f7f8fb; color: #7a8494; }
+html[data-theme="light"] .source-viewer__toggle--on { border-color: rgba(22,139,122,.4); color: #168b7a; }
+html[data-theme="light"] .source-viewer__toggle:hover { color: #273142; }
+html[data-theme="light"] .source-viewer__explaining { color: #168b7a !important; }
+html[data-theme="light"] .source-viewer__explaining--error { color: #b93b47 !important; }
+html[data-theme="light"] .symbol-list button { color: #44349e; }
+html[data-theme="light"] .symbol-list button:hover .symbol-list__name { color: #2f2480; }
+html[data-theme="light"] .symbol-list__kind { background: rgba(22,139,122,.12); color: #168b7a; }
+html[data-theme="light"] .symbol-list__kind--class { background: rgba(184,101,26,.12); color: #94600f; }
+html[data-theme="light"] .symbol-list__text { color: #687386; }
+
+/* Explainers arrive asynchronously after the code is already on screen;
+   easing them in reads as "here's more" rather than a layout jolt. */
+.source-explainer { animation: explainer-in 320ms ease-out both; }
+@keyframes explainer-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .source-explainer { animation: none; }
+}

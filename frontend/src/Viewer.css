@@ -85,7 +85,7 @@
   cursor: pointer;
   font: inherit;
 }
-.breadcrumbs button:first-child {
+.breadcrumbs > button:first-child {
   display: grid;
   width: 24px;
   height: 24px;
@@ -124,7 +124,10 @@
   transition: transform 700ms cubic-bezier(.22,1,.36,1);
 }
 
-.node {
+/* Scoped to .world: Mermaid also names its diagram nodes `.node`, and an
+   unscoped rule here (absolute positioning, a -50% translate) once dragged
+   every map node thousands of pixels off-canvas. */
+.world .node {
   position: absolute;
   width: 196px;
   padding: 15px 16px;
@@ -137,9 +140,9 @@
   transform: translate(-50%, -50%);
   transition: opacity 400ms ease, border-color 200ms ease, box-shadow 200ms ease, transform 200ms ease;
 }
-.node:hover { border-color: #7166c9; box-shadow: 0 14px 28px rgba(64,51,150,.24); }
-.node--folder { border-color: #327dca; background: linear-gradient(135deg, rgba(28,65,104,.96), rgba(24,31,45,.97)); }
-.node--folder::before {
+.world .node:hover { border-color: #7166c9; box-shadow: 0 14px 28px rgba(64,51,150,.24); }
+.world .node--folder { border-color: #327dca; background: linear-gradient(135deg, rgba(28,65,104,.96), rgba(24,31,45,.97)); }
+.world .node--folder::before {
   display: block;
   margin-bottom: 7px;
   color: #70b6ff;
@@ -148,8 +151,8 @@
   font-size: .48rem;
   letter-spacing: .1em;
 }
-.node--python { border-color: #278c63; background: linear-gradient(135deg, rgba(24,75,58,.96), rgba(24,35,34,.97)); }
-.node--python::before {
+.world .node--python { border-color: #278c63; background: linear-gradient(135deg, rgba(24,75,58,.96), rgba(24,35,34,.97)); }
+.world .node--python::before {
   display: block;
   margin-bottom: 7px;
   color: #72e0ad;
@@ -158,9 +161,9 @@
   font-size: .48rem;
   letter-spacing: .1em;
 }
-.node--selected { box-shadow: 0 0 0 3px rgba(126,109,255,.22), 0 16px 30px rgba(45,33,126,.28); }
-.node__name { overflow: hidden; color: #e8e7f2; font-size: .88rem; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
-.node__summary { display: -webkit-box; margin-top: 7px; overflow: hidden; color: #979bab; font-size: .62rem; line-height: 1.4; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.world .node--selected { box-shadow: 0 0 0 3px rgba(126,109,255,.22), 0 16px 30px rgba(45,33,126,.28); }
+.world .node__name { overflow: hidden; color: #e8e7f2; font-size: .88rem; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.world .node__summary { display: -webkit-box; margin-top: 7px; overflow: hidden; color: #979bab; font-size: .62rem; line-height: 1.4; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 
 .detail-panel {
   position: absolute;
@@ -321,9 +324,9 @@
 /* Folder cards are anchored by their center, so uneven heights make a row of
    them look ragged — a floor keeps the repo-level row visually aligned
    whether a folder previews one child or five. */
-.node--folder:has(.node__preview) { min-height: 118px; display: flex; flex-direction: column; justify-content: center; }
-.node__preview { margin-top: 9px; display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; }
-.node__preview-chip {
+.world .node--folder:has(.node__preview) { min-height: 118px; display: flex; flex-direction: column; justify-content: center; }
+.world .node__preview { margin-top: 9px; display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; }
+.world .node__preview-chip {
   max-width: 68px;
   overflow: hidden;
   padding: 2px 6px;
@@ -335,7 +338,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.node__preview-chip--more { background: rgba(126,109,255,.14); color: #a193ff; }
+.world .node__preview-chip--more { background: rgba(126,109,255,.14); color: #a193ff; }
 .detail-panel h3 { margin: 25px 0 10px; color: #717587; font-family: "DM Mono", monospace; font-size: .61rem; letter-spacing: .1em; text-transform: uppercase; }
 .detail-panel__deps { margin: 0; padding: 0; color: #c7c9d3; font-family: "DM Mono", monospace; font-size: .68rem; list-style: none; }
 .detail-panel__deps li { padding: 7px 0; border-bottom: 1px solid #22242d; }
@@ -361,7 +364,7 @@
   /* The panel docks to the bottom at this width, so the toggle never needs
      to slide out of its way — and 380px would push it off a narrow screen. */
   .viewer__tools, .viewer__tools--panel-open { top: 14px; right: 14px; }
-  .detail-panel { width: 100%; height: 54%; top: auto; padding: 21px 18px; border-top: 1px solid #303240; border-left: 0; }
+  .detail-panel { width: 100%; height: 54%; top: auto; bottom: 0; padding: 21px 18px; border-top: 1px solid #303240; border-left: 0; }
 }
 
 html[data-theme="light"] .viewer {
@@ -381,7 +384,7 @@ html[data-theme="light"] .breadcrumbs {
   box-shadow: 0 8px 24px rgba(44, 62, 92, .1);
 }
 html[data-theme="light"] .breadcrumbs button { color: #788292; }
-html[data-theme="light"] .breadcrumbs button:first-child {
+html[data-theme="light"] .breadcrumbs > button:first-child {
   background: #f0effd;
   color: #6653d5;
 }
@@ -398,35 +401,35 @@ html[data-theme="light"] .viewer::before {
   border-color: #e0e4ec;
   color: #8b95a4;
 }
-html[data-theme="light"] .node {
+html[data-theme="light"] .world .node {
   border-color: #d9dee8;
   background: rgba(255,255,255,.94);
   box-shadow: 0 10px 24px rgba(44, 62, 92, .1);
 }
-html[data-theme="light"] .node:hover {
+html[data-theme="light"] .world .node:hover {
   border-color: #897be2;
   box-shadow: 0 14px 28px rgba(76, 61, 170, .16);
 }
-html[data-theme="light"] .node--folder {
+html[data-theme="light"] .world .node--folder {
   border-color: #8bbcf0;
   background: linear-gradient(135deg, #e4f2ff, #fff);
 }
-html[data-theme="light"] .node--folder::before { color: #2b75bb; }
-html[data-theme="light"] .node--python {
+html[data-theme="light"] .world .node--folder::before { color: #2b75bb; }
+html[data-theme="light"] .world .node--python {
   border-color: #8bcfae;
   background: linear-gradient(135deg, #e5f8ee, #fff);
 }
-html[data-theme="light"] .node--python::before { color: #198453; }
-html[data-theme="light"] .node--selected {
+html[data-theme="light"] .world .node--python::before { color: #198453; }
+html[data-theme="light"] .world .node--selected {
   box-shadow: 0 0 0 3px rgba(117, 97, 223, .16), 0 16px 30px rgba(76, 61, 170, .13);
 }
-html[data-theme="light"] .node__name { color: #273142; }
-html[data-theme="light"] .node__summary { color: #687386; }
-html[data-theme="light"] .node__preview-chip {
+html[data-theme="light"] .world .node__name { color: #273142; }
+html[data-theme="light"] .world .node__summary { color: #687386; }
+html[data-theme="light"] .world .node__preview-chip {
   background: #f1f3f7;
   color: #7c8796;
 }
-html[data-theme="light"] .node__preview-chip--more {
+html[data-theme="light"] .world .node__preview-chip--more {
   background: #eeeaff;
   color: #6551d5;
 }
@@ -547,3 +550,176 @@ html[data-theme="light"] .rich__block {
   background: #f4f5f9;
   color: #303a4b;
 }
+
+/* ---- Architecture map mode ------------------------------------------- */
+
+/* Map / folders segmented control inside the breadcrumbs bar. */
+.mode-switch {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: 6px;
+  padding: 2px;
+  border: 1px solid #292b39;
+  border-radius: 7px;
+  background: rgba(255,255,255,.03);
+}
+.mode-switch button {
+  padding: 3px 8px !important;
+  border-radius: 5px !important;
+  color: #878b9e;
+  font-size: .64rem;
+  letter-spacing: .04em;
+}
+.mode-switch button.active { background: #2a2748; color: #e4dfff !important; }
+.breadcrumbs__overview { margin-left: 4px; color: #65d8c4 !important; font-size: .66rem; }
+.breadcrumbs__overview.active { color: #b9fff1 !important; }
+
+/* The map's container: full canvas, minus the detail panel when open. The
+   ArchitectureView inside is absolutely positioned to this frame. */
+.arch-frame {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  transition: right 300ms ease;
+}
+.arch-frame--panel-open { right: 360px; }
+
+.arch-placeholder {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: min(440px, calc(100vw - 40px));
+  padding: 26px 28px;
+  border: 1px solid #3a3364;
+  border-radius: 16px;
+  background: rgba(26, 23, 45, .96);
+  box-shadow: 0 24px 70px rgba(0,0,0,.4);
+  color: #e5e1ff;
+  text-align: center;
+  transform: translate(-50%, -50%);
+}
+.arch-placeholder p { margin: 0; color: #9a97b3; font-size: .76rem; line-height: 1.55; }
+.arch-placeholder__error { color: #f0787d !important; }
+.arch-placeholder__actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.arch-placeholder__link {
+  border: none;
+  background: none;
+  color: #a5a0ed;
+  cursor: pointer;
+  font: inherit;
+  font-size: .74rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.arch-placeholder__link:hover { color: #d2ceff; }
+
+/* Project overview as a dismissible drawer over the map (in folders mode it
+   owns the top band instead — see .overview-card). */
+.overview-drawer {
+  position: absolute;
+  top: 66px;
+  left: 20px;
+  z-index: 9;
+  width: min(560px, calc(100vw - 40px));
+  max-height: calc(100vh - 100px);
+  padding: 18px 20px 16px;
+  overflow-y: auto;
+  border: 1px solid #303343;
+  border-radius: 14px;
+  background: rgba(17, 18, 26, .95);
+  box-shadow: 0 18px 50px rgba(0,0,0,.35);
+  backdrop-filter: blur(14px);
+  scrollbar-width: thin;
+}
+.overview-drawer .overview-card__title { font-size: 1.3rem; }
+.overview-drawer .overview-card__text { font-size: .84rem; }
+.overview-drawer__close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 1px solid #303240;
+  border-radius: 7px;
+  background: #1d1e29;
+  color: #9da0b0;
+  cursor: pointer;
+  font-size: 1rem;
+}
+.overview-drawer__close:hover { color: #fff; border-color: #7670ba; }
+
+/* Component block at the top of the detail panel when a map node is selected. */
+.detail-panel__component { margin-top: 6px; padding-bottom: 14px; border-bottom: 1px solid #22242d; }
+.detail-panel__group-desc { margin: 18px 0 0; color: #8f93a6; font-size: .74rem; font-style: italic; line-height: 1.5; }
+.detail-panel__component-type { margin: -8px 0 10px; color: #8f93a6; font-family: "DM Mono", monospace; font-size: .64rem; letter-spacing: .04em; }
+.detail-panel__title--secondary { font-size: .86rem; font-family: "DM Mono", monospace; font-weight: 500; }
+.detail-panel__flows { margin: 0; padding: 0; list-style: none; }
+.detail-panel__flows li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 0; border-bottom: 1px solid #22242d; font-size: .72rem; }
+.detail-panel__flows button {
+  padding: 0;
+  border: none;
+  background: none;
+  color: #c7c1ff;
+  cursor: pointer;
+  font: inherit;
+  font-size: .74rem;
+  font-weight: 600;
+  text-align: left;
+}
+.detail-panel__flows button:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
+.detail-panel__flow-label { color: #8f93a6; font-style: italic; }
+.detail-panel__flow-badge {
+  margin-left: auto;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(62,207,142,.13);
+  color: #57d99b;
+  font-family: "DM Mono", monospace;
+  font-size: .52rem;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.detail-panel__flow--inferred .detail-panel__flow-badge { background: rgba(229,160,62,.13); color: #efb25d; }
+
+@media (max-width: 620px) {
+  .arch-frame--panel-open { right: 0; bottom: 54%; }
+  .overview-drawer { top: 60px; left: 14px; width: calc(100vw - 28px); }
+  .mode-switch { margin-left: 2px; }
+}
+
+html[data-theme="light"] .mode-switch { border-color: #e0e4ec; background: #f3f4f8; }
+html[data-theme="light"] .mode-switch button.active { background: #e8e5ff; color: #44349e !important; }
+html[data-theme="light"] .breadcrumbs__overview { color: #168b7a !important; }
+html[data-theme="light"] .breadcrumbs__overview.active { color: #0d6b5d !important; }
+html[data-theme="light"] .arch-placeholder {
+  border-color: #d9d2ff;
+  background: rgba(255,255,255,.97);
+  box-shadow: 0 16px 50px rgba(44, 62, 92, .16);
+  color: #322c62;
+}
+html[data-theme="light"] .arch-placeholder p { color: #6b7386; }
+html[data-theme="light"] .arch-placeholder__error { color: #b93b47 !important; }
+html[data-theme="light"] .arch-placeholder__link { color: #6253bd; }
+html[data-theme="light"] .arch-placeholder__link:hover { color: #463696; }
+html[data-theme="light"] .overview-drawer {
+  border-color: #e0e4ec;
+  background: rgba(255,255,255,.96);
+  box-shadow: 0 14px 44px rgba(44, 62, 92, .14);
+}
+html[data-theme="light"] .overview-drawer__close { border-color: #dfe3eb; background: #f5f6f9; color: #7a8494; }
+html[data-theme="light"] .overview-drawer__close:hover { color: #44349e; border-color: #aaa0ed; }
+html[data-theme="light"] .detail-panel__component,
+html[data-theme="light"] .detail-panel__flows li { border-bottom-color: #edf0f4; }
+html[data-theme="light"] .detail-panel__component-type,
+html[data-theme="light"] .detail-panel__flow-label { color: #7d8796; }
+html[data-theme="light"] .detail-panel__flows button { color: #5d4ac3; }
+html[data-theme="light"] .detail-panel__flows button:hover { color: #3a2b96; }
+html[data-theme="light"] .detail-panel__flow-badge { background: rgba(31, 157, 107, .12); color: #14794f; }
+html[data-theme="light"] .detail-panel__flow--inferred .detail-panel__flow-badge { background: rgba(196, 127, 28, .14); color: #94600f; }

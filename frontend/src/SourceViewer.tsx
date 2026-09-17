@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { askWhy, fetchFileContent, fetchRationales } from "./api";
-import type { FileContent, LineRationale } from "./types";
+import { askWhy, ensureSymbolExplainers, fetchFileContent, fetchRationales } from "./api";
+import type { FileContent, LineRationale, SymbolExplainer } from "./types";
 import { RichText } from "./markdown";
 import { highlightLines } from "./highlight";
 import { Spinner } from "./Spinner";
@@ -39,6 +39,15 @@ export function SourceViewer({ owner, name, path, onClose }: Props) {
   const [askError, setAskError] = useState<string | null>(null);
   const [activeRationale, setActiveRationale] = useState<LineRationale | null>(null);
 
+  // Proactive one-line explainers for every function/class, generated the
+  // first time anyone opens this file and stored after. Loaded separately
+  // from the file so the code shows immediately and the explainers land
+  // when they land.
+  const [explainers, setExplainers] = useState<SymbolExplainer[]>([]);
+  const [explainersStatus, setExplainersStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [explainersError, setExplainersError] = useState<string | null>(null);
+  const [showExplainers, setShowExplainers] = useState(true);
+
   useEffect(() => {
     setLoading(true);
     setLoadError(null);
@@ -52,6 +61,39 @@ export function SourceViewer({ owner, name, path, onClose }: Props) {
       .catch((e) => setLoadError(String(e.message ?? e)))
       .finally(() => setLoading(false));
   }, [owner, name, path]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setExplainers([]);
+    setExplainersError(null);
+    setExplainersStatus("loading");
+    ensureSymbolExplainers(owner, name, path)
+      .then((entries) => {
+        if (cancelled) return;
+        setExplainers(entries);
+        setExplainersStatus("done");
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        setExplainersError(String((e as { message?: string })?.message ?? e));
+        setExplainersStatus("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [owner, name, path]);
+
+  const explainerByLine = useMemo(() => {
+    const map = new Map<number, SymbolExplainer>();
+    explainers.forEach((x) => {
+      if (!map.has(x.line)) map.set(x.line, x);
+    });
+    return map;
+  }, [explainers]);
+
+  function jumpToLine(line: number) {
+    document.querySelector<HTMLElement>(`[data-line="${line}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }
 
   const lines = useMemo(() => (file ? highlightLines(file.content, path) : []), [file, path]);
 
@@ -129,6 +171,16 @@ export function SourceViewer({ owner, name, path, onClose }: Props) {
             ← Back
           </button>
           <span className="source-viewer__path">{path}</span>
+          {explainers.length > 0 && (
+            <button
+              className={`source-viewer__toggle ${showExplainers ? "source-viewer__toggle--on" : ""}`}
+              onClick={() => setShowExplainers((v) => !v)}
+              aria-pressed={showExplainers}
+              title="Show or hide the one-line explainers above each function"
+            >
+              ✦ explainers
+            </button>
+          )}
           <button className="source-viewer__close" onClick={onClose} aria-label="Close">
             ×
           </button>
@@ -147,9 +199,18 @@ export function SourceViewer({ owner, name, path, onClose }: Props) {
               {lines.map((html, i) => {
                 const lineNo = i + 1;
                 const rationale = rationaleForLine(lineNo);
+                const explainer = showExplainers ? explainerByLine.get(lineNo) : undefined;
                 return (
+                  <div key={lineNo}>
+                  {explainer && (
+                    <div className={`source-explainer source-explainer--${explainer.kind}`} aria-label={`${explainer.kind} ${explainer.name}`}>
+                      <span className="source-explainer__gutter" aria-hidden="true">✦</span>
+                      <span className="source-explainer__text">
+                        <span className="source-explainer__name">{explainer.name}</span> {explainer.explanation}
+                      </span>
+                    </div>
+                  )}
                   <div
-                    key={lineNo}
                     data-line={lineNo}
                     className={`source-line ${isSelected(lineNo) ? "source-line--selected" : ""}`}
                   >
@@ -166,6 +227,7 @@ export function SourceViewer({ owner, name, path, onClose }: Props) {
                         ●
                       </button>
                     )}
+                  </div>
                   </div>
                 );
               })}
@@ -208,6 +270,35 @@ export function SourceViewer({ owner, name, path, onClose }: Props) {
               {!selection && !activeRationale && (
                 <div className="source-viewer__hint">
                   <p>Highlight any code on the left — a word, an expression, a whole block — then ask why it's there.</p>
+                  {explainersStatus === "loading" && (
+                    <p className="source-viewer__explaining">
+                      <Spinner size="sm" /> Explaining each function in this file… (first open only)
+                    </p>
+                  )}
+                  {explainersStatus === "error" && (
+                    <p className="source-viewer__explaining source-viewer__explaining--error">
+                      Couldn't generate function explainers: {explainersError}
+                    </p>
+                  )}
+                  {explainersStatus === "done" && explainers.length === 0 && (
+                    <p className="source-viewer__explaining">No functions or classes found to explain in this file.</p>
+                  )}
+                  {explainers.length > 0 && (
+                    <>
+                      <h4>Functions &amp; classes</h4>
+                      <ul className="symbol-list">
+                        {explainers.map((x) => (
+                          <li key={x.id}>
+                            <button onClick={() => jumpToLine(x.line)} title={`Line ${x.line}`}>
+                              <span className={`symbol-list__kind symbol-list__kind--${x.kind}`}>{x.kind === "method" ? "def" : x.kind === "class" ? "class" : "fn"}</span>
+                              <span className="symbol-list__name">{x.name}</span>
+                            </button>
+                            <p className="symbol-list__text">{x.explanation}</p>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
                   {rationales.length > 0 && (
                     <>
                       <h4>Recorded so far</h4>

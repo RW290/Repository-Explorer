@@ -1,4 +1,13 @@
-import type { AnalysisStatus, FileContent, FileRationale, Graph, LineRationale, ProjectRationale } from "./types";
+import type {
+  AnalysisStatus,
+  Architecture,
+  FileContent,
+  FileRationale,
+  Graph,
+  LineRationale,
+  ProjectRationale,
+  SymbolExplainer,
+} from "./types";
 
 // Use same-origin API paths by default so Replit's proxy can route requests to
 // the local backend. A separately deployed backend can still be configured.
@@ -112,6 +121,38 @@ export async function askAboutProject(owner: string, name: string, question?: st
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question: question || null }),
+    }),
+  );
+}
+
+// Builds (or returns the cached) semantic architecture map for an analyzed
+// repo. New analyses include it in the graph already; this backfills repos
+// cached before the stage existed. One LLM call, so expect tens of seconds
+// the first time and instant afterwards.
+export async function buildArchitecture(
+  owner: string,
+  name: string,
+  forceRefresh = false,
+): Promise<Architecture | null> {
+  const result = await asJson<{ architecture: Architecture | null }>(
+    await fetch(`${API_BASE}/api/repos/${owner}/${name}/architecture`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ force_refresh: forceRefresh }),
+    }),
+  );
+  return result.architecture;
+}
+
+// One-line explainers for every function/class in a file. The first call
+// for a file generates them (one batched LLM call, tens of seconds); later
+// calls return the stored set.
+export async function ensureSymbolExplainers(owner: string, name: string, path: string): Promise<SymbolExplainer[]> {
+  return asJson(
+    await fetch(`${API_BASE}/api/repos/${owner}/${name}/symbol-explainers`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path }),
     }),
   );
 }

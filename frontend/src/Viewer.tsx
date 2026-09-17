@@ -1,9 +1,10 @@
-import { lazy, Suspense, useMemo, useState } from "react";
-import type { Graph, GraphNode } from "./types";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import type { Architecture, Graph, GraphNode } from "./types";
 import { computeLayout, fitScale, repoViewCenter } from "./layout";
-import { parseRepoUrl } from "./api";
-import { DetailPanel } from "./DetailPanel";
+import { buildArchitecture, parseRepoUrl } from "./api";
+import { DetailPanel, type ComponentSelection } from "./DetailPanel";
 import { ProjectOverview } from "./ProjectOverview";
+import { Spinner } from "./Spinner";
 import { ThemeToggle, type Theme } from "./ThemeToggle";
 import "./Viewer.css";
 
@@ -11,8 +12,14 @@ import "./Viewer.css";
 // which would otherwise more than double the initial bundle for a panel most
 // visitors never open.
 const SourceViewer = lazy(() => import("./SourceViewer"));
+// Likewise Mermaid (~1MB) rides with the map view, not the landing page.
+const ArchitectureView = lazy(() => import("./ArchitectureView").then((m) => ({ default: m.ArchitectureView })));
 
 type Level = "repo" | "folder" | "file";
+// What the repo level shows: the semantic architecture map (Mermaid, groups
+// like Frontend / API / LLM) or the literal folder grid. Both drill into the
+// same folder → file levels below.
+type Mode = "map" | "folders";
 
 const PANEL_WIDTH = 360;
 // Share of the viewport height left to the folder grid once the compact project
@@ -44,13 +51,49 @@ export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
     return map;
   }, [graph.nodes]);
 
+  const repo = useMemo(() => parseRepoUrl(graph.repo_url), [graph.repo_url]);
+  const hasOverviewCard = Boolean(repo && graph.overview);
+
+  // The map can exist (shipped with the graph), be buildable (a real repo
+  // analyzed before the map stage existed — ask the backend once), or be
+  // impossible (fixture without one). Only the last forces the folder grid.
+  const [architecture, setArchitecture] = useState<Architecture | null>(graph.architecture);
+  const [mapStatus, setMapStatus] = useState<"idle" | "loading" | "error" | "unavailable">(
+    graph.architecture ? "idle" : repo ? "loading" : "unavailable",
+  );
+  const [mapError, setMapError] = useState<string | null>(null);
+  const [mode, setMode] = useState<Mode>(graph.architecture || repo ? "map" : "folders");
+
+  useEffect(() => {
+    if (architecture || !repo || mapStatus !== "loading") return;
+    let cancelled = false;
+    buildArchitecture(repo.owner, repo.name)
+      .then((result) => {
+        if (cancelled) return;
+        if (result) {
+          setArchitecture(result);
+          setMapStatus("idle");
+        } else {
+          setMapError("The model couldn't produce a usable map for this repository.");
+          setMapStatus("error");
+        }
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        setMapError(String((e as { message?: string })?.message ?? e));
+        setMapStatus("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [architecture, repo, mapStatus]);
+
   const [level, setLevel] = useState<Level>("repo");
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedComponentId, setSelectedComponentId] = useState<string | null>(null);
   const [viewingSource, setViewingSource] = useState(false);
-
-  const repo = useMemo(() => parseRepoUrl(graph.repo_url), [graph.repo_url]);
-  const hasOverviewCard = Boolean(repo && graph.overview);
+  const [showOverview, setShowOverview] = useState(false);
 
   const viewportW = typeof window !== "undefined" ? window.innerWidth : 1200;
   const viewportH = typeof window !== "undefined" ? window.innerHeight : 800;
@@ -128,7 +171,10 @@ export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
   const focusY = level === "repo" && hasOverviewCard ? viewportH * FOLDER_BAND_CENTER : viewportH / 2;
   const ty = focusY - target.y * scale;
 
+  const showMap = mode === "map" && level === "repo";
+
   function isVisible(node: GraphNode): boolean {
+    if (showMap) return false;
     if (level === "repo") return node.parent === null;
     return node.parent === activeFolderId;
   }
@@ -148,6 +194,7 @@ export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
     setLevel("repo");
     setActiveFolderId(null);
     setSelectedNodeId(null);
+    setSelectedComponentId(null);
     setViewingSource(false);
   }
 
@@ -168,15 +215,72 @@ export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
     }
   }
 
+  /** A click on a map node: select that file/folder without leaving the
+   * map. Map node ids are graph node ids. */
+  function selectComponent(id: string) {
+    const isExternal = id.startsWith("ext:");
+    if (!isExternal && !byId.has(id)) return;
+    setSelectedComponentId(id);
+    setSelectedNodeId(isExternal ? null : id);
+    setViewingSource(false);
+  }
+
+  /** Jump from a map component into the zoomable explorer at its file or
+   * folder. The mode stays "map", so the repo crumb leads back here. */
+  function openInExplorer(node: GraphNode) {
+    setSelectedComponentId(null);
+    setViewingSource(false);
+    if (node.type === "folder") {
+      setActiveFolderId(node.id);
+      setSelectedNodeId(node.id);
+      setLevel("folder");
+    } else {
+      setActiveFolderId(node.parent);
+      setSelectedNodeId(node.id);
+      setLevel("file");
+    }
+  }
+
   const selectedNode = selectedNodeId ? byId.get(selectedNodeId) ?? null : null;
   const selectedAnnotations = selectedNode
     ? graph.annotations.filter((a) => selectedNode.annotations.includes(a.id))
     : [];
 
+  const selection = useMemo<ComponentSelection | undefined>(() => {
+    if (!architecture || !selectedComponentId) return undefined;
+    const member = architecture.nodes.find((n) => n.id === selectedComponentId);
+    if (!member) return undefined;
+    // Neighbours are graph nodes, or externals stood in for by a minimal
+    // node-shaped record so the flow list can name them.
+    const otherFor = (id: string): GraphNode | undefined => {
+      const real = byId.get(id);
+      if (real) return real;
+      const ext = architecture.nodes.find((n) => n.id === id && n.external);
+      return ext
+        ? { id: ext.label ?? id.replace(/^ext:/, ""), type: "file", parent: null, summary: ext.description ?? "", dependencies: [], annotations: [] }
+        : undefined;
+    };
+    const resolve = (edges: Architecture["edges"], pick: (e: Architecture["edges"][number]) => string) =>
+      edges.flatMap((edge) => {
+        const other = otherFor(pick(edge));
+        return other ? [{ edge, other, otherId: pick(edge) }] : [];
+      });
+    return {
+      external: member.external ? { label: member.label ?? member.id.replace(/^ext:/, ""), description: member.description ?? null } : undefined,
+      group: architecture.groups.find((g) => g.id === member.group) ?? null,
+      inbound: resolve(architecture.edges.filter((e) => e.target === member.id), (e) => e.source),
+      outbound: resolve(architecture.edges.filter((e) => e.source === member.id), (e) => e.target),
+    };
+  }, [architecture, selectedComponentId, byId]);
+
+  const panelOpen = Boolean(selectedNode || selection?.external);
+
   function nodeCategory(node: GraphNode): "folder" | "python" | "other" {
     if (node.type === "folder") return "folder";
     return /\.py$/i.test(node.id) ? "python" : "other";
   }
+
+  const canShowMap = mapStatus !== "unavailable";
 
   return (
     <div className="viewer">
@@ -210,19 +314,107 @@ export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
             </button>
           </>
         )}
+        {canShowMap && level === "repo" && (
+          <div className="mode-switch" role="tablist" aria-label="Repo view">
+            <button
+              role="tab"
+              aria-selected={mode === "map"}
+              className={mode === "map" ? "active" : ""}
+              onClick={() => {
+                setMode("map");
+                setSelectedNodeId(null);
+              }}
+              title="Semantic architecture map"
+            >
+              map
+            </button>
+            <button
+              role="tab"
+              aria-selected={mode === "folders"}
+              className={mode === "folders" ? "active" : ""}
+              onClick={() => {
+                setMode("folders");
+                setSelectedComponentId(null);
+                setSelectedNodeId(null);
+                setShowOverview(false);
+              }}
+              title="Folder-by-folder file grid"
+            >
+              folders
+            </button>
+          </div>
+        )}
+        {showMap && hasOverviewCard && (
+          <button
+            className={`breadcrumbs__overview ${showOverview ? "active" : ""}`}
+            onClick={() => setShowOverview((v) => !v)}
+            title="Project overview"
+          >
+            ◎ overview
+          </button>
+        )}
       </div>
-      <div className={`viewer__tools ${selectedNode ? "viewer__tools--panel-open" : ""}`}>
+      <div className={`viewer__tools ${panelOpen ? "viewer__tools--panel-open" : ""}`}>
         <ThemeToggle theme={theme} onToggle={onToggleTheme} />
       </div>
-      <div className="viewer__legend" aria-label="Node color legend">
-        <span><i className="viewer__legend-swatch viewer__legend-swatch--folder" />Folders</span>
-        <span><i className="viewer__legend-swatch viewer__legend-swatch--python" />Python files</span>
-        <span><i className="viewer__legend-swatch viewer__legend-swatch--other" />Other files</span>
-      </div>
+      {!showMap && (
+        <div className="viewer__legend" aria-label="Node color legend">
+          <span><i className="viewer__legend-swatch viewer__legend-swatch--folder" />Folders</span>
+          <span><i className="viewer__legend-swatch viewer__legend-swatch--python" />Python files</span>
+          <span><i className="viewer__legend-swatch viewer__legend-swatch--other" />Other files</span>
+        </div>
+      )}
+
+      {showMap && architecture && (
+        <Suspense fallback={null}>
+          <div className={`arch-frame ${panelOpen ? "arch-frame--panel-open" : ""}`}>
+            <ArchitectureView
+              architecture={architecture}
+              nodes={graph.nodes}
+              theme={theme}
+              selectedId={selectedComponentId}
+              onSelect={selectComponent}
+            />
+          </div>
+        </Suspense>
+      )}
+      {showMap && !architecture && (
+        <div className="arch-placeholder">
+          {mapStatus === "loading" ? (
+            <>
+              <Spinner size="lg" label="Mapping the architecture…" />
+              <p>
+                One-time step for this repository: the model is grouping its files into components and
+                layers. This can take a minute or two.
+              </p>
+              <button className="arch-placeholder__link" onClick={() => setMode("folders")}>
+                Browse folders in the meantime
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="arch-placeholder__error">{mapError ?? "No architecture map is available."}</p>
+              <div className="arch-placeholder__actions">
+                {repo && (
+                  <button className="detail-panel__view-source" onClick={() => setMapStatus("loading")}>
+                    Try again
+                  </button>
+                )}
+                <button className="arch-placeholder__link" onClick={() => setMode("folders")}>
+                  Browse folders instead
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       <div
         className="world"
-        style={{ transform: `translate(${tx}px, ${ty}px) scale(${scale})` }}
+        style={{
+          transform: `translate(${tx}px, ${ty}px) scale(${scale})`,
+          visibility: showMap ? "hidden" : "visible",
+        }}
       >
         {graph.nodes.map((node) => {
           const pos = positions[node.id];
@@ -263,10 +455,13 @@ export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
         })}
       </div>
 
-      {selectedNode && (
+      {panelOpen && (
         <DetailPanel
           node={selectedNode}
           annotations={selectedAnnotations}
+          selection={selection}
+          onSelectComponent={selectComponent}
+          onOpenInExplorer={selectedNode && selection ? () => openInExplorer(selectedNode) : undefined}
           // Dismissing the panel has to step the camera out too: at file
           // level it's aimed at the very node being deselected, so leaving
           // the level alone would point it at nothing.
@@ -276,10 +471,10 @@ export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
             else goToRepo();
           }}
           onViewSource={
-            repo && selectedNode.type === "file" ? () => setViewingSource(true) : undefined
+            repo && selectedNode?.type === "file" ? () => setViewingSource(true) : undefined
           }
           fileRationale={
-            repo && selectedNode.type === "file"
+            repo && selectedNode?.type === "file"
               ? { owner: repo.owner, name: repo.name, path: selectedNode.id }
               : undefined
           }
@@ -297,8 +492,21 @@ export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
         </Suspense>
       )}
 
-      {hasOverviewCard && level === "repo" && (
+      {hasOverviewCard && level === "repo" && !showMap && (
         <ProjectOverview owner={repo!.owner} name={repo!.name} overview={graph.overview} />
+      )}
+      {hasOverviewCard && showMap && showOverview && (
+        <div className="overview-drawer">
+          <button className="overview-drawer__close" onClick={() => setShowOverview(false)} aria-label="Close overview">
+            ×
+          </button>
+          <ProjectOverview
+            owner={repo!.owner}
+            name={repo!.name}
+            overview={graph.overview}
+            style={{ position: "static", width: "auto", maxHeight: "none", transform: "none", maskImage: "none", WebkitMaskImage: "none", padding: 0 }}
+          />
+        </div>
       )}
     </div>
   );

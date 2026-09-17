@@ -32,8 +32,9 @@ from app.explain import (
     explain_selection,
 )
 from app.jobs import get_job, start_job
-from app.models import FileRationale, Graph, LineRationale, ProjectRationale
-from app.pipeline import load_cached, parse_repo_url, run_pipeline
+from app.models import Architecture, FileRationale, Graph, LineRationale, ProjectRationale, SymbolExplainer
+from app.symbols import explain_symbols
+from app.pipeline import ensure_architecture, load_cached, parse_repo_url, run_pipeline
 
 # Generous cap on what gets sent to the browser for one file — this is about
 # rendering cost in the viewer, not the GitHub API limit (github_client
@@ -95,6 +96,19 @@ class FileExplainRequest(BaseModel):
 
 class ProjectExplainRequest(BaseModel):
     question: str | None = None
+
+
+class SymbolExplainRequest(BaseModel):
+    path: str
+    force_refresh: bool = False
+
+
+class ArchitectureRequest(BaseModel):
+    force_refresh: bool = False
+
+
+class ArchitectureResponse(BaseModel):
+    architecture: Architecture | None
 
 
 @app.get("/health")
@@ -173,6 +187,21 @@ def get_file_content(owner: str, name: str, path: str = Query(...)) -> FileConte
     return FileContentResponse(path=path, content=content[:MAX_FILE_CHARS_FOR_VIEWER], truncated=truncated)
 
 
+@app.post("/api/repos/{owner}/{name}/architecture", response_model=ArchitectureResponse)
+def build_architecture(owner: str, name: str, payload: ArchitectureRequest) -> ArchitectureResponse:
+    """Generates (or regenerates) the semantic architecture map for an
+    already-analyzed repo. New analyses produce it inline; this exists so
+    repos cached before the stage existed get one on first open without a
+    full re-analysis, which would cost minutes and real LLM quota."""
+    if load_cached(f"https://github.com/{owner}/{name}") is None:
+        raise HTTPException(status_code=404, detail="This repository hasn't been analyzed yet.")
+    try:
+        architecture = ensure_architecture(owner, name, force=payload.force_refresh)
+    except PipelineError as e:
+        raise HTTPException(status_code=e.http_status, detail=str(e))
+    return ArchitectureResponse(architecture=architecture)
+
+
 @app.get("/api/repos/{owner}/{name}/rationales", response_model=list[LineRationale])
 def get_rationales(owner: str, name: str, path: str = Query(...)) -> list[dict]:
     return rationale_store.load_rationales(owner, name, path)
@@ -232,6 +261,39 @@ def create_rationale(owner: str, name: str, payload: ExplainRequest) -> dict:
     }
     rationale_store.add_rationale(owner, name, entry)
     return entry
+
+
+@app.post("/api/repos/{owner}/{name}/symbol-explainers", response_model=list[SymbolExplainer])
+def ensure_symbol_explainers(owner: str, name: str, payload: SymbolExplainRequest) -> list[dict]:
+    """One-line explainers for every function/class in a file, generated
+    proactively the first time the file is opened in the source viewer and
+    persisted for everyone after. POST rather than GET because the first
+    call has a side effect (one batched LLM call); later calls just read."""
+    if not payload.force_refresh:
+        cached = rationale_store.load_symbol_explainers(owner, name, payload.path)
+        if cached:
+            return cached
+
+    try:
+        content = github_client.file_contents(owner, name, payload.path)
+    except PipelineError as e:
+        raise HTTPException(status_code=e.http_status, detail=str(e))
+
+    file_summary = None
+    graph = load_cached(f"https://github.com/{owner}/{name}")
+    if graph is not None:
+        node = next((n for n in graph["nodes"] if n["id"] == payload.path), None)
+        file_summary = node.get("summary") if node else None
+
+    try:
+        explained = explain_symbols(payload.path, content, file_summary)
+    except PipelineError as e:
+        raise HTTPException(status_code=e.http_status, detail=str(e))
+
+    now = time.time()
+    entries = [{"id": str(uuid.uuid4()), "created_at": now, **item} for item in explained]
+    rationale_store.replace_symbol_explainers(owner, name, payload.path, entries)
+    return entries
 
 
 @app.get("/api/repos/{owner}/{name}/file-rationales", response_model=list[FileRationale])

@@ -15,6 +15,7 @@ import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
+from app.architecture import generate_architecture
 from app.merge import merge
 from app.miner import run_miner
 from app.parser import run_parser
@@ -43,6 +44,24 @@ def load_cached(repo_url: str) -> dict | None:
     return json.loads(path.read_text()) if path.exists() else None
 
 
+def ensure_architecture(owner: str, name: str, force: bool = False) -> dict | None:
+    """Backfill the architecture map for a repo analyzed before this stage
+    existed (or whose generation failed), writing it into the same cache
+    file so the next full load carries it. Returns None if there's no
+    analysis to build on or generation failed again."""
+    cache_path = cache_path_for(owner, name)
+    if not cache_path.exists():
+        return None
+    graph = json.loads(cache_path.read_text())
+    if graph.get("architecture") and not force:
+        return graph["architecture"]
+    architecture = generate_architecture(owner, name, graph)
+    if architecture is not None:
+        graph["architecture"] = architecture
+        cache_path.write_text(json.dumps(graph, indent=2))
+    return architecture
+
+
 def run_pipeline(repo_url: str, force_refresh: bool = False, on_stage: Callable[[str], None] | None = None) -> dict:
     owner, name = parse_repo_url(repo_url)
     cache_path = cache_path_for(owner, name)
@@ -59,6 +78,9 @@ def run_pipeline(repo_url: str, force_refresh: bool = False, on_stage: Callable[
         on_stage("merging annotations into graph")
     graph = merge(nodes, extractions, overview)
     graph["repo_url"] = f"https://github.com/{owner}/{name}"
+    # Last, because it reads the summaries and overview the earlier stages
+    # produced. Best-effort (None on failure), like the overview.
+    graph["architecture"] = generate_architecture(owner, name, graph, on_stage=on_stage)
 
     CACHE_DIR.mkdir(exist_ok=True)
     cache_path.write_text(json.dumps(graph, indent=2))

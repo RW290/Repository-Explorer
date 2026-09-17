@@ -1,0 +1,167 @@
+/* The architecture map fills the canvas area; the Viewer shifts its right
+   edge when the detail panel is open (see .arch--panel-open). */
+.arch {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  transition: right 300ms ease;
+}
+.arch--dragging { cursor: grabbing; }
+.arch--panel-open { right: 360px; }
+
+.arch__canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+.arch__canvas--animate { transition: transform 350ms cubic-bezier(.22,1,.36,1); }
+.arch__host { line-height: 0; }
+.arch__host svg { display: block; overflow: visible; }
+
+/* Node interaction on top of Mermaid's static SVG. `> :not(.label)` is the
+   shape element (rect/path/polygon/circle) — the label group is the other
+   child. */
+.arch svg g.arch-node--linked { cursor: pointer; }
+.arch svg g.arch-node > :not(.label) { transition: filter 160ms ease, stroke-width 160ms ease; }
+@media (hover: hover) and (pointer: fine) {
+  .arch svg g.arch-node--linked:hover > :not(.label) { filter: brightness(1.15) saturate(1.1); }
+}
+.arch svg g.arch-node--selected > :not(.label) {
+  stroke: #a293ff !important;
+  stroke-width: 3px !important;
+  filter: drop-shadow(0 0 8px rgba(139,123,255,.55));
+}
+html[data-theme="light"] .arch svg g.arch-node--selected > :not(.label) {
+  stroke: #6653d5 !important;
+  filter: drop-shadow(0 0 8px rgba(102,83,213,.35));
+}
+/* Second label line = the component's type. */
+.arch svg .arch-type-line { font-size: 11px; opacity: .72; letter-spacing: .01em; }
+.arch svg .arch-desc-line { font-size: 10.5px; opacity: .62; font-style: italic; }
+.arch svg .nodeLabel { font-weight: 600; }
+.arch svg .nodeLabel .arch-type-line,
+.arch svg .nodeLabel .arch-desc-line { font-weight: 400; }
+.arch svg g.arch-node--external { opacity: .78; }
+.arch svg g.arch-node--external:hover { opacity: 1; }
+.viewer__legend-swatch--external { background: #6b7386; }
+.arch svg .edgeLabel { font-size: 11px; }
+.arch svg .cluster-label { font-family: "DM Mono", monospace; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+/* Mermaid rounds only some shapes; give plain boxes and clusters the same
+   corner radius as the folder/file cards. */
+.arch svg g.arch-node > rect.basic { rx: 10px; ry: 10px; }
+.arch svg .cluster > rect { rx: 14px; ry: 14px; }
+
+.arch__status {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border: 1px solid #292b39;
+  border-radius: 10px;
+  background: rgba(17, 18, 26, .9);
+  color: #c7c1ff;
+  font-size: .78rem;
+  transform: translate(-50%, -50%);
+}
+.arch__status--error { max-width: 420px; color: #f0787d; line-height: 1.5; }
+
+.arch__toolbar {
+  position: absolute;
+  left: 20px;
+  bottom: 18px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px;
+  border: 1px solid #292b39;
+  border-radius: 10px;
+  background: rgba(17, 18, 26, .88);
+  box-shadow: 0 10px 28px rgba(0,0,0,.2);
+  cursor: default;
+  backdrop-filter: blur(12px);
+}
+.arch__toolbar button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #b6adff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+}
+.arch__toolbar button:hover { background: #242333; color: #e4dfff; }
+.arch__toolbar .arch__fit { width: auto; padding: 0 9px; font-family: "DM Mono", monospace; font-size: .62rem; letter-spacing: .06em; }
+.arch__toolbar-sep { width: 1px; height: 18px; margin: 0 3px; background: #292b39; }
+.arch__toolbar .arch__toggle--on { background: #2a2748; color: #e4dfff; }
+.arch__zoom { min-width: 40px; color: #878b9e; font-family: "DM Mono", monospace; font-size: .62rem; text-align: center; }
+
+.arch__legend {
+  position: absolute;
+  right: 20px;
+  bottom: 18px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 8px 11px;
+  border: 1px solid #292b39;
+  border-radius: 8px;
+  background: rgba(17, 18, 26, .82);
+  color: #878b9e;
+  cursor: default;
+  font-family: "DM Mono", monospace;
+  font-size: .58rem;
+  backdrop-filter: blur(12px);
+}
+.arch__legend span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.arch__legend-line { display: inline-block; width: 18px; border-top: 2px solid #8f86e6; }
+.arch__legend-line--dashed { border-top-style: dashed; }
+.arch__legend-line--faint { border-top-width: 1px; border-top-color: #4c4f66; }
+.arch__legend-gap { margin-left: 4px; padding-left: 12px; border-left: 1px solid #292b39; }
+.arch__legend-hint { color: #5d6072; }
+
+@media (max-width: 620px) {
+  .arch__legend { flex-wrap: wrap; justify-content: flex-end; max-width: 60vw; }
+  /* The detail panel docks to the bottom at this width. */
+  .arch--panel-open { right: 0; bottom: 54%; }
+  .arch__toolbar { left: 14px; bottom: 14px; }
+  .arch__legend { right: 14px; bottom: 14px; gap: 8px; font-size: .52rem; }
+  .arch__legend-hint { display: none; }
+}
+
+html[data-theme="light"] .arch__status,
+html[data-theme="light"] .arch__toolbar,
+html[data-theme="light"] .arch__legend {
+  border-color: #e0e4ec;
+  background: rgba(255,255,255,.9);
+  box-shadow: 0 8px 24px rgba(44, 62, 92, .1);
+}
+html[data-theme="light"] .arch__status { color: #4f3eb7; }
+html[data-theme="light"] .arch__status--error { color: #b93b47; }
+html[data-theme="light"] .arch__toolbar button { color: #5d4ac3; }
+html[data-theme="light"] .arch__toolbar button:hover { background: #f0effd; color: #3a2b96; }
+html[data-theme="light"] .arch__zoom,
+html[data-theme="light"] .arch__legend { color: #788292; }
+html[data-theme="light"] .arch__legend-line { border-top-color: #6653d5; }
+html[data-theme="light"] .arch__legend-line--faint { border-top-color: #b9bfcc; }
+html[data-theme="light"] .arch__legend-gap,
+html[data-theme="light"] .arch__toolbar-sep { border-left-color: #e0e4ec; background-color: #e0e4ec; }
+html[data-theme="light"] .arch__legend-gap { background: none; }
+html[data-theme="light"] .arch__toolbar .arch__toggle--on { background: #e8e5ff; color: #44349e; }
+html[data-theme="light"] .arch__legend-hint { color: #a3abb8; }

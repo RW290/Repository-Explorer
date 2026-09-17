@@ -55,10 +55,17 @@ def _client() -> Client:
     return _client_instance
 
 
-def call_llm(prompt: str, model: str = DEFAULT_MODEL) -> str:
-    """Send one prompt, return the raw text response."""
+def call_llm(prompt: str, model: str = DEFAULT_MODEL, temperature: float | None = None) -> str:
+    """Send one prompt, return the raw text response.
+
+    `temperature` is left at the model's default unless a caller asks
+    otherwise; a structured-JSON task (the architecture map) runs cooler so
+    two runs over the same repo land on similar graphs."""
+    options = {"temperature": temperature} if temperature is not None else None
     try:
-        response = _client().chat(model, messages=[{"role": "user", "content": prompt}], stream=False)
+        response = _client().chat(
+            model, messages=[{"role": "user", "content": prompt}], stream=False, options=options
+        )
     except PipelineError:
         raise
     except Exception as e:
