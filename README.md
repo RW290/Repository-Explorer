@@ -20,12 +20,33 @@ heavy PR discipline) and
 (small solo project, flat layout, almost no PR history).
 
 - **Parser** (`backend/app/parser.py`) — shallow-clones the repo, builds a
-  file-level import graph via Python's `ast` module (no LLM), then batches
-  every file (not just `.py` — see Known limitations) into LLM calls for
-  summaries. File discovery works for any layout (not just `src/`), and
-  import resolution handles both absolute and relative imports. Also
+  file-level import graph (no LLM — see the resolver below), then batches
+  every file into LLM calls for summaries. File discovery works for any
+  layout (not just `src/`). Also
   generates a one-time project overview (from the repo's README, or folder
   structure if there's no README) shown at the top zoom level in the viewer.
+- **Import resolver** (`backend/app/imports.py`) — the dependency edges,
+  for Python, JavaScript/TypeScript (incl. Vue/Svelte), Go, Rust,
+  Java/Kotlin/Scala, C/C++, Ruby, PHP, Dart, CSS/SCSS and HTML. Pure local
+  static analysis: Python via `ast`, everything else via line-anchored
+  import patterns — import statements are the most regular syntax a
+  language has, and a real parser per language would mean a native
+  toolchain per language on the server. The substance is *resolution*,
+  done per language: tsconfig `paths`/`baseUrl` (with `extends` and JSONC
+  comments), workspace packages, the `.js`→`.ts` ESM quirk and index
+  files; Go module path → package directory; Rust `mod` declarations and
+  `crate::`/`super::` paths across workspace crates; JVM imports and C
+  includes by path suffix; composer PSR-4; Sass partials; Python import
+  roots inferred from layout, so a nested `backend/app` package resolves.
+  An edge is drawn only when an import lands on a file that exists in the
+  repo — third-party and stdlib imports resolve to nothing and are dropped
+  (a repo file named `logging.py` does not capture `import logging`).
+  Covered by `backend/tests/test_imports.py` (`python -m unittest discover
+  -s tests` from `backend/`), which asserts exact edge sets because an
+  extra edge is as wrong as a missing one. The resolver is versioned:
+  opening a repo analyzed under an older one re-resolves its edges from a
+  fresh clone in a background job — seconds, no LLM quota — instead of
+  discarding the expensive parts of the analysis.
 - **Miner** (`backend/app/miner.py`) — fetches merged PRs via the GitHub
   GraphQL API through `app/github_client.py` (the `gh` CLI locally, a real
   token when deployed — see Secrets below), filters trivial/irrelevant
@@ -88,12 +109,13 @@ text matched the real PR content, and thin/missing PR descriptions
 correctly fell back to `rationale_inferred` with lower confidence rather
 than being presented as stated fact.
 
-The parser's import resolution (absolute + relative imports, `src/`-layout
-awareness with a generic fallback) and PR mining have now been exercised
-against two differently-shaped Python repos. File *discovery* and
-summarization work for any language now (see Known limitations), but a
-heavily dynamic-import codebase, or a repo where most of the interesting
-structure lives in a non-Python dependency graph, hasn't been tried.
+PR mining has been exercised against two differently-shaped Python repos.
+The import resolver has been run against real repos in several languages
+(psf/requests — no edges lost versus the old Python-only resolver; this
+repo's own nested Python + TypeScript; a TypeScript app using `~/` path
+aliases; a Rust crate with a lib + bin; a Go module with subpackages) plus
+synthetic cases for the rest. A heavily dynamic-import codebase hasn't been
+tried, and would mostly show up as missing edges.
 
 ## Layout
 
@@ -265,9 +287,18 @@ it resolves once the instance is warm).
 - Every file in a repo becomes a node with an LLM summary, regardless of
   language (lockfiles, generated/vendor output, and binary/media files are
   excluded — see `EXCLUDE_FILE_NAMES`/`EXCLUDE_FILE_SUFFIXES` in
-  `backend/app/parser.py`). Dependency *edges*, though, are Python-only —
-  there's no import-graph resolution for other languages, so a JS/Rust/etc.
-  file always shows as a node with no arrows in or out.
+  `backend/app/parser.py`). Dependency edges cover the languages listed
+  under the import resolver above and are static and best-effort:
+  - C# and Swift get none — their imports name a namespace/module that can
+    span any number of files, so any edge would be a guess.
+  - Go files in the *same* package reference each other with no import
+    statement at all, so a single-package Go repo legitimately shows no
+    edges. A Go import (and a JVM wildcard) names a whole directory; the
+    fan-out to its files is capped at 8.
+  - Anything computed at runtime — `importlib`, `require(variable)`,
+    dependency injection, reflection, bundler aliases declared only in a
+    Vite/Webpack config (beyond the `@/`→`src/` convention) — is invisible
+    to it. Those show up as missing edges, never wrong ones.
 - The viewer's zoom model is 2 levels deep (folder → file); a repo with
   deeply nested subpackages gets flattened one level.
 - The architecture map's selection and grouping are the model's judgment:

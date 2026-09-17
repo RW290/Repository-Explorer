@@ -200,6 +200,29 @@ def _files_for(path: str | None, nodes_by_id: dict[str, dict], children: dict[st
     return set(children.get(path, []))
 
 
+def _mark_backed(nodes: list[dict], edges: list[dict], nodes_by_id: dict[str, dict], children: dict[str, list[str]]) -> None:
+    """Which edges do the real imports vouch for? Either direction counts —
+    the model draws data flow, which may run opposite to the import."""
+    files_by_node = {n["id"]: _files_for(n["id"], nodes_by_id, children) for n in nodes}  # externals → empty set
+    for e in edges:
+        src_files, dst_files = files_by_node.get(e["source"], set()), files_by_node.get(e["target"], set())
+        e["backed"] = any(
+            dep in dst_files for f in src_files for dep in nodes_by_id[f].get("dependencies", [])
+        ) or any(dep in src_files for f in dst_files for dep in nodes_by_id[f].get("dependencies", []))
+
+
+def recompute_backing(architecture: dict, graph_nodes: list[dict]) -> None:
+    """Re-verify an existing map's flows against a changed import graph (the
+    resolver learned a language, say). The map itself is the model's and is
+    left alone; only the solid/dashed verdict on each edge is refreshed."""
+    nodes_by_id = {n["id"]: n for n in graph_nodes}
+    children: dict[str, list[str]] = {}
+    for n in graph_nodes:
+        if n["type"] == "file" and n.get("parent"):
+            children.setdefault(n["parent"], []).append(n["id"])
+    _mark_backed(architecture.get("nodes", []), architecture.get("edges", []), nodes_by_id, children)
+
+
 def validate_architecture(raw: dict, graph_nodes: list[dict]) -> tuple[dict | None, list[str]]:
     """Normalize the model's JSON into the stored shape, returning the cleaned
     AST plus a list of problems worth feeding back for a repair attempt.
@@ -320,14 +343,7 @@ def validate_architecture(raw: dict, graph_nodes: list[dict]) -> tuple[dict | No
     nodes = [n for n in nodes if not n.get("external") or n["id"] in connected]
     groups = [g for g in groups if g["id"] in used_groups]
 
-    # Which edges do the real imports vouch for? Either direction counts —
-    # the model draws data flow, which may run opposite to the import.
-    files_by_node = {n["id"]: _files_for(n["id"], nodes_by_id, children) for n in nodes}  # externals → empty set
-    for e in edges:
-        src_files, dst_files = files_by_node[e["source"]], files_by_node[e["target"]]
-        e["backed"] = any(
-            dep in dst_files for f in src_files for dep in nodes_by_id[f].get("dependencies", [])
-        ) or any(dep in src_files for f in dst_files for dep in nodes_by_id[f].get("dependencies", []))
+    _mark_backed(nodes, edges, nodes_by_id, children)
 
     if len([n for n in nodes if not n.get("external")]) < 3:
         problems.append("fewer than 3 usable members")

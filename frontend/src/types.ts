@@ -72,6 +72,9 @@ export interface Graph {
   // Null when generation failed or the analysis predates the map stage; the
   // viewer then asks the backend to build one on first open.
   architecture: Architecture | null;
+  // Generation of the backend's import resolver that produced the edges.
+  // Informational: the backend refreshes stale edges itself on open.
+  resolver_version?: number;
 }
 
 export interface LineRationale {

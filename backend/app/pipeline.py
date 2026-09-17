@@ -15,10 +15,11 @@ import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
-from app.architecture import generate_architecture
+from app.architecture import generate_architecture, recompute_backing
+from app.imports import RESOLVER_VERSION, build_dependency_graph
 from app.merge import merge
 from app.miner import run_miner
-from app.parser import run_parser
+from app.parser import clone_repo, discover_files, run_parser
 
 CACHE_DIR = Path(__file__).resolve().parent.parent / ".cache"
 
@@ -62,6 +63,48 @@ def ensure_architecture(owner: str, name: str, force: bool = False) -> dict | No
     return architecture
 
 
+def edges_are_stale(graph: dict) -> bool:
+    return int(graph.get("resolver_version", 1)) < RESOLVER_VERSION
+
+
+def refresh_dependencies(repo_url: str, on_stage: Callable[[str], None] | None = None) -> dict:
+    """Recompute a cached analysis's import edges with the current resolver.
+
+    The expensive parts of an analysis are the LLM calls (summaries, PR
+    rationale, the map) and none of them depend on the resolver. The edges
+    are pure local computation over a fresh clone — seconds, zero quota — so
+    when the resolver improves, an old cache gets new edges without being
+    thrown away. Nodes stay exactly as analyzed: only files that still exist
+    are updated, and edges only ever point at nodes already in the graph, so
+    a repo that moved on since analysis can't introduce dangling ids.
+
+    Any failure here (GitHub down, repo deleted) returns the cache untouched:
+    stale edges are a worse graph, not a broken one."""
+    owner, name = parse_repo_url(repo_url)
+    cache_path = cache_path_for(owner, name)
+    graph = json.loads(cache_path.read_text())
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            if on_stage:
+                on_stage("updating dependency edges (cloning)")
+            repo_root = clone_repo(f"https://github.com/{owner}/{name}.git", Path(tmp))
+            if on_stage:
+                on_stage("updating dependency edges (resolving imports)")
+            dependencies = build_dependency_graph(repo_root, discover_files(repo_root))
+    except Exception:  # noqa: BLE001 — see docstring: degrade, never fail the open
+        return graph
+
+    node_ids = {n["id"] for n in graph["nodes"]}
+    for node in graph["nodes"]:
+        if node["type"] == "file" and node["id"] in dependencies:
+            node["dependencies"] = [d for d in dependencies[node["id"]] if d in node_ids]
+    if graph.get("architecture"):
+        recompute_backing(graph["architecture"], graph["nodes"])
+    graph["resolver_version"] = RESOLVER_VERSION
+    cache_path.write_text(json.dumps(graph, indent=2))
+    return graph
+
+
 def run_pipeline(repo_url: str, force_refresh: bool = False, on_stage: Callable[[str], None] | None = None) -> dict:
     owner, name = parse_repo_url(repo_url)
     cache_path = cache_path_for(owner, name)
@@ -81,6 +124,7 @@ def run_pipeline(repo_url: str, force_refresh: bool = False, on_stage: Callable[
     # Last, because it reads the summaries and overview the earlier stages
     # produced. Best-effort (None on failure), like the overview.
     graph["architecture"] = generate_architecture(owner, name, graph, on_stage=on_stage)
+    graph["resolver_version"] = RESOLVER_VERSION
 
     CACHE_DIR.mkdir(exist_ok=True)
     cache_path.write_text(json.dumps(graph, indent=2))

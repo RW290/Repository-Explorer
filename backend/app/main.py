@@ -34,7 +34,7 @@ from app.explain import (
 from app.jobs import get_job, start_job
 from app.models import Architecture, FileRationale, Graph, LineRationale, ProjectRationale, SymbolExplainer
 from app.symbols import explain_symbols
-from app.pipeline import ensure_architecture, load_cached, parse_repo_url, run_pipeline
+from app.pipeline import edges_are_stale, ensure_architecture, load_cached, parse_repo_url, run_pipeline
 
 # Generous cap on what gets sent to the browser for one file — this is about
 # rendering cost in the viewer, not the GitHub API limit (github_client
@@ -155,6 +155,12 @@ def start_analysis(payload: AnalyzeRequest) -> AnalysisStatus:
 
     if not payload.force_refresh:
         cached = load_cached(payload.repo_url)
+        if cached is not None and edges_are_stale(cached):
+            # Analyzed under an older import resolver (e.g. Python-only):
+            # re-resolve edges in the background — no LLM, a few seconds —
+            # rather than serving a graph that's missing arrows it could have.
+            job = start_job(payload.repo_url, refresh_edges_only=True)
+            return AnalysisStatus(job_id=job.id, status=job.status, stage="updating dependency edges")
         if cached is not None:
             return AnalysisStatus(status="done", graph=Graph.model_validate(cached))
 

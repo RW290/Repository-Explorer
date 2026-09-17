@@ -1,15 +1,14 @@
 """Architecture parser (phase 2): local static analysis, no LLM for the graph shape.
 
 Clones the target repo, discovers every file worth showing, and builds a
-file-level dependency graph from Python imports using the `ast` module —
-not a full type-checker, just best-effort static resolution. Non-Python
-files become nodes (and get LLM summaries) the same as Python files, but
-never get dependency edges — there's no import-parsing for other
-languages here. LLM calls are used only for the batched file summaries and
-the project overview, never for the dependency edges themselves.
+file-level dependency graph from import statements — best-effort static
+resolution per language, not a type-checker (see imports.py, which owns
+that and lists what's covered). Every file becomes a node and gets an LLM
+summary; files in a language the resolver doesn't cover simply have no
+edges. LLM calls are used only for the batched file summaries and the
+project overview, never for the dependency edges themselves.
 """
 
-import ast
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -17,6 +16,7 @@ from pathlib import Path
 
 from app.audience import AUDIENCE_FRAMING
 from app.errors import ConfigurationError, PipelineError, RepoCloneError
+from app.imports import build_dependency_graph
 from app.llm import call_llm, call_with_retry
 
 EXCLUDE_DIR_NAMES = {
@@ -122,84 +122,6 @@ def folder_id_for(rel_path: Path) -> str:
     if parts[0] in ("src", "lib") and len(parts) > 1:
         return f"{parts[0]}/{parts[1]}"
     return parts[0]
-
-
-def _extract_import_statements(tree: ast.AST) -> list[tuple[str | None, int, list[str]]]:
-    """Returns (module, relative_level, imported_names) for each import statement."""
-    statements = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                statements.append((alias.name, 0, []))
-        elif isinstance(node, ast.ImportFrom):
-            names = [a.name for a in node.names]
-            statements.append((node.module, node.level, names))
-    return statements
-
-
-def _resolve_import(
-    current_rel: Path,
-    module: str | None,
-    level: int,
-    imported_names: list[str],
-    known_files: set[str],
-) -> list[str]:
-    """Best-effort mapping of one import statement to repo-relative paths already in known_files."""
-    results: list[str] = []
-    current_dir_parts = list(current_rel.parts[:-1])
-
-    if level > 0:
-        base_parts = current_dir_parts[: len(current_dir_parts) - (level - 1)] if level > 1 else current_dir_parts
-        candidates = []
-        if module:
-            candidates.append(base_parts + module.split("."))
-        else:
-            for name in imported_names:
-                candidates.append(base_parts + [name])
-        for parts in candidates:
-            candidate = "/".join(parts) + ".py"
-            if candidate in known_files:
-                results.append(candidate)
-    else:
-        if not module:
-            return results
-        parts = module.split(".")
-        root_pkg = parts[0]
-        for prefix in ("", "src/", "lib/"):
-            base = f"{prefix}{'/'.join(parts)}"
-            if f"{base}.py" in known_files:
-                results.append(f"{base}.py")
-            elif f"{base}/__init__.py" in known_files:
-                results.append(f"{base}/__init__.py")
-            elif len(parts) == 1:
-                for name in imported_names:
-                    candidate = f"{prefix}{root_pkg}/{name}.py"
-                    if candidate in known_files:
-                        results.append(candidate)
-    return results
-
-
-def build_dependency_graph(repo_root: Path, files: list[Path]) -> dict[str, list[str]]:
-    """Every file gets an entry (possibly empty); only .py files get edges,
-    since import resolution below is Python-specific."""
-    known_files = {str(f.relative_to(repo_root)) for f in files}
-    graph: dict[str, list[str]] = {str(f.relative_to(repo_root)): [] for f in files}
-    for f in files:
-        if f.suffix != ".py":
-            continue
-        rel = f.relative_to(repo_root)
-        rel_str = str(rel)
-        try:
-            tree = ast.parse(f.read_text(encoding="utf-8", errors="ignore"))
-        except SyntaxError:
-            continue
-        deps: set[str] = set()
-        for module, level, names in _extract_import_statements(tree):
-            for dep in _resolve_import(rel, module, level, names, known_files):
-                if dep != rel_str:
-                    deps.add(dep)
-        graph[rel_str] = sorted(deps)
-    return graph
 
 
 def build_nodes(repo_root: Path, files: list[Path], dependencies: dict[str, list[str]]) -> list[ParsedNode]:

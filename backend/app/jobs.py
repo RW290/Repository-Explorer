@@ -17,7 +17,7 @@ import uuid
 from dataclasses import dataclass, field
 
 from app.errors import PipelineError
-from app.pipeline import run_pipeline
+from app.pipeline import refresh_dependencies, run_pipeline
 
 Status = str  # "pending" | "running" | "done" | "error"
 
@@ -37,7 +37,10 @@ _jobs: dict[str, Job] = {}
 _lock = threading.Lock()
 
 
-def start_job(repo_url: str, force_refresh: bool = False) -> Job:
+def start_job(repo_url: str, force_refresh: bool = False, refresh_edges_only: bool = False) -> Job:
+    """`refresh_edges_only` re-resolves imports for an already-cached repo (no
+    LLM, seconds) instead of running the whole pipeline — same job/poll
+    machinery, because it still involves a clone the request shouldn't block on."""
     job = Job(id=str(uuid.uuid4()), repo_url=repo_url)
     with _lock:
         _jobs[job.id] = job
@@ -45,7 +48,10 @@ def start_job(repo_url: str, force_refresh: bool = False) -> Job:
     def run() -> None:
         job.status = "running"
         try:
-            job.result = run_pipeline(repo_url, force_refresh=force_refresh, on_stage=_make_reporter(job))
+            if refresh_edges_only:
+                job.result = refresh_dependencies(repo_url, on_stage=_make_reporter(job))
+            else:
+                job.result = run_pipeline(repo_url, force_refresh=force_refresh, on_stage=_make_reporter(job))
             job.status = "done"
         except Exception as e:
             job.error = _friendly_error(e)

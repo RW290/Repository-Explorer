@@ -89,6 +89,10 @@ class Graph(BaseModel):
     # None when generation failed, or for analyses cached before this stage
     # existed — the frontend asks for a lazy backfill in that case.
     architecture: Architecture | None = None
+    # Which generation of the import resolver produced `dependencies` (see
+    # imports.RESOLVER_VERSION). Analyses from before the field existed were
+    # Python-only, i.e. version 1.
+    resolver_version: int = 1
 
 
 class LineRationale(BaseModel):

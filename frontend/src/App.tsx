@@ -186,7 +186,7 @@ export function App() {
         </div>
       )}
 
-      <footer className="landing__footer">Built for curious engineers <span>·</span> Dependency graph is Python-only, for now</footer>
+      <footer className="landing__footer">Built for curious engineers <span>·</span> Dependency edges for Python, JS/TS, Go, Rust, JVM, C/C++ and more</footer>
     </div>
   );
 }
