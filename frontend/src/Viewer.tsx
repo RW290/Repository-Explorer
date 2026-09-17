@@ -1,8 +1,9 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { Architecture, Graph, GraphNode } from "./types";
 import { computeLayout, fitScale, repoViewCenter } from "./layout";
 import { buildArchitecture, parseRepoUrl } from "./api";
 import { DetailPanel, type ComponentSelection } from "./DetailPanel";
+import { labelOf, languageOf, legendFor, toneOf } from "./languages";
 import { ProjectOverview } from "./ProjectOverview";
 import { Spinner } from "./Spinner";
 import { ThemeToggle, type Theme } from "./ThemeToggle";
@@ -275,10 +276,30 @@ export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
 
   const panelOpen = Boolean(selectedNode || selection?.external);
 
-  function nodeCategory(node: GraphNode): "folder" | "python" | "other" {
+  function nodeCategory(node: GraphNode): "folder" | "code" | "other" {
     if (node.type === "folder") return "folder";
-    return /\.py$/i.test(node.id) ? "python" : "other";
+    return languageOf(node.id) ? "code" : "other";
   }
+
+  /** A file card's colours come from its kind (language, docs, config) as
+   * CSS variables, so one rule in Viewer.css styles every kind. */
+  function toneVars(node: GraphNode): CSSProperties {
+    const tone = node.type === "file" ? toneOf(node.id, theme) : null;
+    if (!tone) return {};
+    return {
+      "--tone-fill": tone.fill,
+      "--tone-stroke": tone.stroke,
+      "--tone-text": tone.text,
+      "--tone-accent": tone.accent,
+    } as CSSProperties;
+  }
+
+  // The legend names the kinds actually on screen, not a fixed list: at repo
+  // level that's the whole repo, inside a folder just that folder's files.
+  const legendPaths = graph.nodes
+    .filter((n) => n.type === "file" && (level === "repo" || n.parent === activeFolderId))
+    .map((n) => n.id);
+  const legend = legendFor(legendPaths, theme);
 
   const canShowMap = mapStatus !== "unavailable";
 
@@ -360,8 +381,10 @@ export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
       {!showMap && (
         <div className="viewer__legend" aria-label="Node color legend">
           <span><i className="viewer__legend-swatch viewer__legend-swatch--folder" />Folders</span>
-          <span><i className="viewer__legend-swatch viewer__legend-swatch--python" />Python files</span>
-          <span><i className="viewer__legend-swatch viewer__legend-swatch--other" />Other files</span>
+          {legend.map((entry) => (
+            <span key={entry.label}><i className="viewer__legend-swatch" style={{ background: entry.color }} />{entry.label}</span>
+          ))}
+          <span><i className="viewer__legend-swatch viewer__legend-swatch--other" />Other</span>
         </div>
       )}
 
@@ -426,7 +449,9 @@ export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
             <div
               key={node.id}
               className={`node node--${nodeCategory(node)} ${isSelected ? "node--selected" : ""}`}
+              data-lang={node.type === "file" ? labelOf(node.id) ?? undefined : undefined}
               style={{
+                ...toneVars(node),
                 left: pos.x,
                 top: pos.y,
                 opacity: visible ? 1 : 0,

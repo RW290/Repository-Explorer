@@ -49,7 +49,6 @@
   border-radius: 50%;
 }
 .viewer__legend-swatch--folder { background: #4e9cff; }
-.viewer__legend-swatch--python { background: #43c98b; }
 .viewer__legend-swatch--other { background: #9aa1b2; }
 
 .viewer::after {
@@ -147,16 +146,6 @@
   margin-bottom: 7px;
   color: #70b6ff;
   content: "FOLDER";
-  font-family: "DM Mono", monospace;
-  font-size: .48rem;
-  letter-spacing: .1em;
-}
-.world .node--python { border-color: #278c63; background: linear-gradient(135deg, rgba(24,75,58,.96), rgba(24,35,34,.97)); }
-.world .node--python::before {
-  display: block;
-  margin-bottom: 7px;
-  color: #72e0ad;
-  content: "PYTHON";
   font-family: "DM Mono", monospace;
   font-size: .48rem;
   letter-spacing: .1em;
@@ -415,11 +404,6 @@ html[data-theme="light"] .world .node--folder {
   background: linear-gradient(135deg, #e4f2ff, #fff);
 }
 html[data-theme="light"] .world .node--folder::before { color: #2b75bb; }
-html[data-theme="light"] .world .node--python {
-  border-color: #8bcfae;
-  background: linear-gradient(135deg, #e5f8ee, #fff);
-}
-html[data-theme="light"] .world .node--python::before { color: #198453; }
 html[data-theme="light"] .world .node--selected {
   box-shadow: 0 0 0 3px rgba(117, 97, 223, .16), 0 16px 30px rgba(76, 61, 170, .13);
 }
@@ -723,3 +707,28 @@ html[data-theme="light"] .detail-panel__flows button { color: #5d4ac3; }
 html[data-theme="light"] .detail-panel__flows button:hover { color: #3a2b96; }
 html[data-theme="light"] .detail-panel__flow-badge { background: rgba(31, 157, 107, .12); color: #14794f; }
 html[data-theme="light"] .detail-panel__flow--inferred .detail-panel__flow-badge { background: rgba(196, 127, 28, .14); color: #94600f; }
+
+/* File cards are coloured by kind — a hue per language, quieter ones for docs
+   and config (see languages.ts, which sets these variables inline for the
+   current theme). Files of no known kind keep the neutral card. */
+.world .node[data-lang] {
+  border-color: var(--tone-stroke);
+  background: linear-gradient(135deg, var(--tone-fill), rgba(22, 24, 34, .97));
+}
+.world .node[data-lang]::before {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--tone-accent);
+  content: attr(data-lang);
+  font-family: "DM Mono", monospace;
+  font-size: .48rem;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.world .node[data-lang] .node__name { color: var(--tone-text); }
+.world .node[data-lang]:hover { border-color: var(--tone-accent); }
+html[data-theme="light"] .world .node[data-lang] {
+  border-color: var(--tone-stroke);
+  background: linear-gradient(135deg, var(--tone-fill), #fff);
+}
+html[data-theme="light"] .world .node[data-lang] .node__name { color: var(--tone-text); }

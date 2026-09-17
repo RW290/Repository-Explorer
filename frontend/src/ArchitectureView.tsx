@@ -3,6 +3,7 @@ import type { Architecture, GraphNode } from "./types";
 import type { Theme } from "./ThemeToggle";
 import { categoryOf, compileMap, type Direction, type MapEdge, type MapModel, type MapNode } from "./mermaid";
 import { Spinner } from "./Spinner";
+import { legendFor } from "./languages";
 import "./ArchitectureView.css";
 
 /**
@@ -570,10 +571,15 @@ export function ArchitectureView({ architecture, nodes, theme, selectedId, onSel
       </div>
 
       <div className="arch__legend" aria-label="Map legend">
-        <span><i className="viewer__legend-swatch viewer__legend-swatch--folder" />Folders</span>
-        <span><i className="viewer__legend-swatch viewer__legend-swatch--python" />Python files</span>
-        <span><i className="viewer__legend-swatch viewer__legend-swatch--other" />Other files</span>
-        <span><i className="viewer__legend-swatch viewer__legend-swatch--external" />External</span>
+        {model.nodes.some((n) => n.category === "folder") && (
+          <span><i className="viewer__legend-swatch viewer__legend-swatch--folder" />Folders</span>
+        )}
+        {legendFor(model.nodes.filter((n) => n.category === "code" || n.category === "other").map((n) => n.id), theme, 4).map((entry) => (
+          <span key={entry.label}><i className="viewer__legend-swatch" style={{ background: entry.color }} />{entry.label}</span>
+        ))}
+        {model.nodes.some((n) => n.category === "external") && (
+          <span><i className="viewer__legend-swatch viewer__legend-swatch--external" />External</span>
+        )}
         <span className="arch__legend-gap"><i className="arch__legend-line" />import-verified flow</span>
         <span><i className="arch__legend-line arch__legend-line--dashed" />inferred flow</span>
         {allImports && <span><i className="arch__legend-line arch__legend-line--faint" />other import</span>}
