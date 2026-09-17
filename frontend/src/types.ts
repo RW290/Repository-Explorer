@@ -122,10 +122,33 @@ export interface FileContent {
   truncated: boolean;
 }
 
+export interface ProgressStage {
+  key: string;
+  label: string;
+  status: "pending" | "running" | "done" | "skipped";
+  detail: string | null;
+  done: number | null;
+  total: number | null;
+  seconds: number | null;
+}
+
+export interface AnalysisProgress {
+  elapsed: number;
+  stages: ProgressStage[];
+  events: { t: number; text: string; kind: string }[];
+  // Version of the partial graph; sent back as `have` so the graph is only
+  // re-downloaded when it changed.
+  partial_version: number;
+}
+
 export interface AnalysisStatus {
   job_id: string | null;
   status: "pending" | "running" | "done" | "error";
   stage: string;
+  // While running this is the partial graph (structure first, summaries
+  // filling in); null on a poll where nothing changed since `have`.
   graph: Graph | null;
+  partial?: boolean;
+  progress?: AnalysisProgress | null;
   error: string | null;
 }

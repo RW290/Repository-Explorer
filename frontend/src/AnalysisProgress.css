@@ -1,0 +1,106 @@
+.progress {
+  text-align: left;
+  font-size: .74rem;
+  color: #c9cbd8;
+}
+.progress--card { width: min(460px, 86vw); }
+/* Bottom-left: the folder grid is centred, so a centred HUD sat on top of the
+   middle folder card. This corner is free while an analysis runs — the map
+   toolbar that normally lives here can't show until the HUD is gone. */
+.progress--hud {
+  position: absolute;
+  left: 20px;
+  bottom: 18px;
+  z-index: 15;
+  width: min(400px, calc(100vw - 40px));
+  padding: 12px 14px;
+  border: 1px solid #3a3364;
+  border-radius: 14px;
+  background: rgba(20, 19, 34, .94);
+  box-shadow: 0 18px 50px rgba(0,0,0,.4);
+  backdrop-filter: blur(14px);
+}
+.progress--hud.progress--collapsed { width: auto; max-width: calc(100vw - 40px); }
+@media (max-width: 620px) { .progress--hud { left: 14px; bottom: 14px; width: calc(100vw - 28px); } }
+
+.progress__header { display: flex; align-items: center; gap: 9px; }
+.progress__pulse {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: #65d8c4;
+  box-shadow: 0 0 0 0 rgba(101,216,196,.6);
+  animation: progress-pulse 1.6s ease-out infinite;
+}
+@keyframes progress-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(101,216,196,.55); }
+  100% { box-shadow: 0 0 0 9px rgba(101,216,196,0); }
+}
+.progress__title { flex: 1; min-width: 0; overflow: hidden; color: #f0eff7; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.progress__title em { color: #a59cf0; font-style: normal; font-weight: 500; }
+.progress__elapsed { flex: none; color: #8f93a6; font-family: "DM Mono", monospace; font-size: .62rem; }
+.progress__toggle {
+  flex: none;
+  padding: 3px 8px;
+  border: 1px solid #303240;
+  border-radius: 6px;
+  background: none;
+  color: #a5a0ed;
+  cursor: pointer;
+  font-family: "DM Mono", monospace;
+  font-size: .58rem;
+}
+.progress__toggle:hover { color: #fff; border-color: #7670ba; }
+
+.progress__stages { display: flex; flex-direction: column; gap: 2px; margin: 12px 0 0; padding: 0; list-style: none; }
+.progress-stage {
+  display: grid;
+  grid-template-columns: 16px 1fr auto 46px;
+  align-items: center;
+  column-gap: 8px;
+  padding: 4px 0;
+  color: #6f7385;
+}
+.progress-stage--running { color: #f0eff7; }
+.progress-stage--done { color: #aeb1c2; }
+.progress-stage__icon { display: grid; width: 14px; height: 14px; place-items: center; border-radius: 50%; font-size: .6rem; line-height: 1; }
+.progress-stage--done .progress-stage__icon { background: rgba(62,207,142,.16); color: #57d99b; }
+.progress-stage--running .progress-stage__icon { border: 2px solid rgba(163,146,255,.28); border-top-color: #a293ff; animation: spin .75s linear infinite; }
+.progress-stage__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.progress-stage--running .progress-stage__label { font-weight: 600; }
+.progress-stage__meta { max-width: 190px; overflow: hidden; color: #8f93a6; font-family: "DM Mono", monospace; font-size: .6rem; text-overflow: ellipsis; white-space: nowrap; }
+.progress-stage__time { color: #6f7385; font-family: "DM Mono", monospace; font-size: .6rem; text-align: right; }
+.progress-stage__bar { grid-column: 2 / -1; height: 3px; margin-top: 4px; overflow: hidden; border-radius: 2px; background: rgba(255,255,255,.07); }
+.progress-stage__fill { display: block; height: 100%; border-radius: 2px; background: linear-gradient(90deg, #8b7bff, #65d8c4); transition: width 600ms ease; }
+.progress-stage__fill--indeterminate { width: 35%; animation: progress-slide 1.4s ease-in-out infinite; }
+@keyframes progress-slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(290%); } }
+
+.progress__events { display: flex; flex-direction: column; gap: 3px; margin: 10px 0 0; padding: 9px 0 0; border-top: 1px solid rgba(255,255,255,.07); list-style: none; }
+.progress__event { overflow: hidden; color: #8f93a6; font-size: .66rem; text-overflow: ellipsis; white-space: nowrap; animation: explainer-in 300ms ease-out both; }
+.progress__event:first-child { color: #d3d4de; }
+.progress__event-time { display: inline-block; width: 44px; color: #5d6072; font-family: "DM Mono", monospace; font-size: .58rem; }
+.progress__note { margin: 9px 0 0; color: #7d8196; font-size: .64rem; line-height: 1.45; }
+
+@media (prefers-reduced-motion: reduce) {
+  .progress__pulse, .progress-stage__fill--indeterminate, .progress__event { animation: none; }
+}
+
+html[data-theme="light"] .progress { color: #4a5464; }
+html[data-theme="light"] .progress--hud { border-color: #d9d2ff; background: rgba(255,255,255,.96); box-shadow: 0 14px 44px rgba(44,62,92,.16); }
+html[data-theme="light"] .progress__title { color: #273142; }
+html[data-theme="light"] .progress__title em { color: #6551d5; }
+html[data-theme="light"] .progress__pulse { background: #168b7a; }
+html[data-theme="light"] .progress__elapsed,
+html[data-theme="light"] .progress-stage__meta { color: #7d8796; }
+html[data-theme="light"] .progress__toggle { border-color: #dcdfe8; color: #5d4ac3; }
+html[data-theme="light"] .progress-stage { color: #9aa3b1; }
+html[data-theme="light"] .progress-stage--running { color: #273142; }
+html[data-theme="light"] .progress-stage--done { color: #5f6878; }
+html[data-theme="light"] .progress-stage--done .progress-stage__icon { background: rgba(31,157,107,.14); color: #14794f; }
+html[data-theme="light"] .progress-stage--running .progress-stage__icon { border-color: rgba(101,81,213,.2); border-top-color: #6653d5; }
+html[data-theme="light"] .progress-stage__bar { background: rgba(71,85,105,.1); }
+html[data-theme="light"] .progress__events { border-top-color: #e8eaf1; }
+html[data-theme="light"] .progress__event { color: #7d8796; }
+html[data-theme="light"] .progress__event:first-child { color: #273142; }
+html[data-theme="light"] .progress__note { color: #7d8796; }

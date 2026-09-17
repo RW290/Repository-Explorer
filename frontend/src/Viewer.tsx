@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useState, type CSSProperties } from "react";
-import type { Architecture, Graph, GraphNode } from "./types";
+import type { AnalysisProgress as Progress, Architecture, Graph, GraphNode } from "./types";
+import { AnalysisProgress } from "./AnalysisProgress";
 import { computeLayout, fitScale, repoViewCenter } from "./layout";
 import { buildArchitecture, parseRepoUrl } from "./api";
 import { DetailPanel, type ComponentSelection } from "./DetailPanel";
@@ -42,9 +43,13 @@ interface Props {
   onBack: () => void;
   theme: Theme;
   onToggleTheme: () => void;
+  /** Non-null while the analysis that produced `graph` is still running:
+   * `graph` is then partial (structure first, summaries and the map still to
+   * come) and is replaced by a fuller one on every poll. */
+  live?: Progress | null;
 }
 
-export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
+export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Props) {
   const positions = useMemo(() => computeLayout(graph.nodes), [graph.nodes]);
   const byId = useMemo(() => {
     const map = new Map<string, GraphNode>();
@@ -59,11 +64,29 @@ export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
   // analyzed before the map stage existed — ask the backend once), or be
   // impossible (fixture without one). Only the last forces the folder grid.
   const [architecture, setArchitecture] = useState<Architecture | null>(graph.architecture);
-  const [mapStatus, setMapStatus] = useState<"idle" | "loading" | "error" | "unavailable">(
-    graph.architecture ? "idle" : repo ? "loading" : "unavailable",
+  // "pending": an analysis is still running and the map is its last stage,
+  // so there's nothing to ask the backend for yet.
+  const [mapStatus, setMapStatus] = useState<"idle" | "loading" | "pending" | "error" | "unavailable">(
+    graph.architecture ? "idle" : live ? "pending" : repo ? "loading" : "unavailable",
   );
   const [mapError, setMapError] = useState<string | null>(null);
-  const [mode, setMode] = useState<Mode>(graph.architecture || repo ? "map" : "folders");
+  // A live analysis opens on the folder grid: that's the part that exists.
+  const [mode, setMode] = useState<Mode>(graph.architecture ? "map" : live ? "folders" : repo ? "map" : "folders");
+
+  // The graph prop is replaced on every poll of a live analysis. When the map
+  // finally arrives, adopt it — and move to it if the reader is still sitting
+  // at the top level, since it's the view they'd have landed on.
+  useEffect(() => {
+    if (!graph.architecture || graph.architecture === architecture) return;
+    setArchitecture(graph.architecture);
+    setMapStatus("idle");
+    if (mapStatus === "pending" && level === "repo" && !selectedNodeId) setMode("map");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [graph.architecture]);
+  // Analysis finished without producing a map: fall back to asking for one.
+  useEffect(() => {
+    if (!live && mapStatus === "pending") setMapStatus(repo ? "loading" : "unavailable");
+  }, [live, mapStatus, repo]);
 
   useEffect(() => {
     if (architecture || !repo || mapStatus !== "loading") return;
@@ -341,13 +364,14 @@ export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
               role="tab"
               aria-selected={mode === "map"}
               className={mode === "map" ? "active" : ""}
+              disabled={mapStatus === "pending"}
               onClick={() => {
                 setMode("map");
                 setSelectedNodeId(null);
               }}
-              title="Semantic architecture map"
+              title={mapStatus === "pending" ? "Built last — ready when the analysis finishes" : "Semantic architecture map"}
             >
-              map
+              map{mapStatus === "pending" ? " …" : ""}
             </button>
             <button
               role="tab"
@@ -460,8 +484,13 @@ export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
               onClick={() => handleNodeClick(node)}
             >
               <div className="node__name">{node.id.split("/").pop()}</div>
-              {level !== "repo" && node.type === "file" && (
+              {level !== "repo" && node.type === "file" && node.summary && (
                 <div className="node__summary">{truncate(node.summary, 70)}</div>
+              )}
+              {visible && level !== "repo" && node.type === "file" && !node.summary && live && (
+                <div className="node__summary node__summary--pending" aria-label="Summary being written">
+                  <span /><span />
+                </div>
               )}
               {preview && preview.length > 0 && (
                 <div className="node__preview" aria-hidden="true">
@@ -482,6 +511,7 @@ export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
 
       {panelOpen && (
         <DetailPanel
+          analyzing={Boolean(live)}
           node={selectedNode}
           annotations={selectedAnnotations}
           selection={selection}
@@ -516,6 +546,8 @@ export function Viewer({ graph, onBack, theme, onToggleTheme }: Props) {
           />
         </Suspense>
       )}
+
+      {live && !viewingSource && <AnalysisProgress progress={live} variant="hud" compact={level !== "repo"} />}
 
       {hasOverviewCard && level === "repo" && !showMap && (
         <ProjectOverview owner={repo!.owner} name={repo!.name} overview={graph.overview} />

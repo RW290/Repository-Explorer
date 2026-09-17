@@ -1,18 +1,26 @@
 import { useEffect, useRef, useState } from "react";
 import { fetchFixture, pollAnalysis, startAnalysis } from "./api";
-import type { Graph } from "./types";
+import type { AnalysisProgress as Progress, Graph } from "./types";
+import { AnalysisProgress } from "./AnalysisProgress";
 import { Spinner } from "./Spinner";
 import { ThemeToggle, type Theme } from "./ThemeToggle";
 import { Viewer } from "./Viewer";
 
 type Status = "idle" | "loading" | "error";
 
-const POLL_INTERVAL_MS = 3000;
+// Fast enough that the stage tracker and streaming summaries feel live. Cheap,
+// because a poll only carries the graph when it changed (see pollAnalysis).
+const POLL_INTERVAL_MS = 1200;
 
 export function App() {
   const [graph, setGraph] = useState<Graph | null>(null);
   const [status, setStatus] = useState<Status>("idle");
   const [stage, setStage] = useState("");
+  // Non-null while an analysis is running: drives the progress card before
+  // the first partial graph, and the HUD over the viewer after it.
+  const [progress, setProgress] = useState<Progress | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const haveVersion = useRef(0);
   const [error, setError] = useState<string | null>(null);
   // Starts empty: the input shows a greyed placeholder as an example of the
   // expected shape, not a real value that gets analyzed if you just hit the
@@ -35,23 +43,46 @@ export function App() {
     }
   }
 
+  function endAnalysis() {
+    setAnalyzing(false);
+    setProgress(null);
+    haveVersion.current = 0;
+  }
+
   function poll(jobId: string) {
-    pollAnalysis(jobId)
+    pollAnalysis(jobId, haveVersion.current)
       .then((result) => {
         if (result.status === "done" && result.graph) {
           setGraph(result.graph);
           setStatus("idle");
+          endAnalysis();
         } else if (result.status === "error") {
+          // A partial graph may already be on screen; drop back to the
+          // landing page so the error isn't hidden behind it.
+          setGraph(null);
           setError(result.error ?? "Analysis failed.");
           setStatus("error");
+          endAnalysis();
         } else {
           setStage(result.stage);
+          if (result.progress) {
+            setProgress(result.progress);
+            haveVersion.current = result.progress.partial_version;
+          }
+          // The partial graph: structure lands seconds in, so the viewer
+          // opens now and fills in, instead of after the last LLM call.
+          if (result.graph) {
+            setGraph(result.graph);
+            setStatus("idle");
+          }
           pollTimer.current = window.setTimeout(() => poll(jobId), POLL_INTERVAL_MS);
         }
       })
       .catch((e) => {
+        setGraph(null);
         setError(String(e.message ?? e));
         setStatus("error");
+        endAnalysis();
       });
   }
 
@@ -83,6 +114,7 @@ export function App() {
           setGraph(result.graph);
           setStatus("idle");
         } else if (result.job_id) {
+          setAnalyzing(true);
           poll(result.job_id);
         }
       })
@@ -98,8 +130,10 @@ export function App() {
         graph={graph}
         onBack={() => {
           stopPolling();
+          endAnalysis();
           setGraph(null);
         }}
+        live={analyzing ? progress : null}
         theme={theme}
         onToggleTheme={() => setTheme((current) => current === "light" ? "dark" : "light")}
       />
@@ -157,7 +191,7 @@ export function App() {
             </button>
           </div>
           <p className="landing__hint">
-            New analyses take a few minutes. Cached repositories open instantly.
+            A new repo is explorable within seconds and finishes filling in over a few minutes. Cached ones open instantly.
           </p>
         </div>
 
@@ -175,8 +209,19 @@ export function App() {
       {status === "loading" && (
         <div className="loading-card" aria-live="polite">
           <div className="loading-card__box">
-            <Spinner size="lg" label={stage || "Preparing your repository…"} />
-            <p className="loading-card__subtext">This can take a few minutes for a new repo.</p>
+            {analyzing ? (
+              <>
+                <AnalysisProgress progress={progress} variant="card" fallbackLabel={stage || "Starting the analysis…"} />
+                <p className="loading-card__subtext">
+                  The graph opens as soon as the structure is known — a few seconds — and fills in while the rest runs.
+                </p>
+              </>
+            ) : (
+              <>
+                <Spinner size="lg" label={stage || "Preparing your repository…"} />
+                <p className="loading-card__subtext">Cached repositories open instantly.</p>
+              </>
+            )}
           </div>
         </div>
       )}

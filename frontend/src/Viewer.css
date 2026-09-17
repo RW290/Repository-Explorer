@@ -732,3 +732,27 @@ html[data-theme="light"] .world .node[data-lang] {
   background: linear-gradient(135deg, var(--tone-fill), #fff);
 }
 html[data-theme="light"] .world .node[data-lang] .node__name { color: var(--tone-text); }
+
+/* Live analysis: a card whose summary hasn't been written yet shimmers where
+   the text will go, so "pending" reads differently from "empty". */
+.node__summary--pending { display: flex !important; flex-direction: column; gap: 4px; margin-top: 9px; }
+.node__summary--pending span {
+  display: block;
+  height: 5px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, rgba(255,255,255,.06) 25%, rgba(255,255,255,.16) 50%, rgba(255,255,255,.06) 75%);
+  background-size: 200% 100%;
+  animation: summary-shimmer 1.6s linear infinite;
+}
+.node__summary--pending span:last-child { width: 62%; margin: 0 auto; }
+@keyframes summary-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+html[data-theme="light"] .node__summary--pending span {
+  background: linear-gradient(90deg, rgba(71,85,105,.08) 25%, rgba(71,85,105,.2) 50%, rgba(71,85,105,.08) 75%);
+  background-size: 200% 100%;
+}
+.detail-panel__summary--pending { color: #8f93a6; font-style: italic; }
+html[data-theme="light"] .detail-panel__summary--pending { color: #7d8796; }
+.mode-switch button:disabled { cursor: default; opacity: .55; }
+/* The progress HUD takes the bottom centre; keep the legend clear of it. */
+@media (max-width: 1100px) { .viewer:has(.progress--hud) .viewer__legend { display: none; } }
+@media (prefers-reduced-motion: reduce) { .node__summary--pending span { animation: none; } }

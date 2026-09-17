@@ -39,8 +39,10 @@ export async function startAnalysis(repoUrl: string, forceRefresh = false): Prom
   );
 }
 
-export async function pollAnalysis(jobId: string): Promise<AnalysisStatus> {
-  return asJson(await fetch(`${API_BASE}/api/analyze/${jobId}`));
+// `have` is the partial-graph version already held: the backend leaves the
+// graph out of the reply unless it's newer, so frequent polls stay tiny.
+export async function pollAnalysis(jobId: string, have = 0): Promise<AnalysisStatus> {
+  return asJson(await fetch(`${API_BASE}/api/analyze/${jobId}?have=${have}`));
 }
 
 // Parses "owner/name" out of a GitHub repo URL, mirroring the backend's

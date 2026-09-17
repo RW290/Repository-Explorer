@@ -22,6 +22,8 @@ interface Props {
   onViewSource?: () => void;
   fileRationale?: { owner: string; name: string; path: string };
   selection?: ComponentSelection;
+  /** The analysis is still running, so an empty summary means "not yet". */
+  analyzing?: boolean;
   onOpenInExplorer?: () => void;
   onSelectComponent?: (id: string) => void;
 }
@@ -68,6 +70,7 @@ export function DetailPanel({
   onViewSource,
   fileRationale,
   selection,
+  analyzing = false,
   onOpenInExplorer,
   onSelectComponent,
 }: Props) {
@@ -86,7 +89,14 @@ export function DetailPanel({
       </div>
       <h2 className="detail-panel__title">{node ? node.id : selection?.external?.label}</h2>
       {node ? (
-        <p className="detail-panel__summary">{node.summary}</p>
+        node.summary || !analyzing ? (
+          <p className="detail-panel__summary">{node.summary}</p>
+        ) : (
+          <p className="detail-panel__summary detail-panel__summary--pending">
+            This file's summary is still being written — it will appear here on its own. Its dependencies below are
+            already final, and the source is available now.
+          </p>
+        )
       ) : (
         <>
           {selection?.external?.description && <p className="detail-panel__summary">{selection.external.description}</p>}
