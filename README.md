@@ -82,6 +82,65 @@ heavy PR discipline) and
   explained in one batched LLM call per ~30 symbols, then persisted per
   file (`POST /api/repos/{owner}/{name}/symbol-explainers`) so it costs
   one call per file, ever.
+- **Speed and liveness** (`backend/app/pipeline.py`, `progress.py`) — a
+  fresh analysis is minutes of waiting on a rate-limited model, so the work
+  is split between making it shorter and making it not matter:
+  - *Time to first useful view is decoupled from time to finished.*
+    Structure (files, folders, import edges) needs no model and is known
+    within seconds of the clone, so the pipeline publishes that partial
+    graph immediately and re-publishes as summaries, the overview and PR
+    history land. The viewer opens on it and fills in live — hubs first,
+    since batches are ordered by how connected a file is. The architecture
+    map, the one stage that reads the summaries, arrives last.
+  - *Reasoning effort is the biggest latency lever.* `gpt-oss` at its
+    default effort wrote ~9,000 characters of hidden reasoning to produce a
+    ~5,000 character batch of summaries (50s); at `think="low"` it wrote
+    ~50 (27s), same quality. Summaries, the overview, function explainers
+    and interactive answers run low; PR rationale and the map keep the
+    default, because stated-vs-inferred is the integrity rule everything
+    rests on and the map is a genuine structuring task.
+  - *Output tokens are the cost, so write less.* Source files get a
+    paragraph; docs, config, data and tests get a sentence or two; a
+    LICENSE, `.gitignore` or empty `__init__.py` gets a templated summary
+    and no model call. Batches are sized by input budget rather than a
+    fixed six files, so small files share a call.
+  - *Independent stages overlap.* PR history needs only the file list and
+    the overview only the README, so both run alongside the summaries
+    instead of after them.
+  - *Concurrency is capped low on purpose.* Measured on the free tier,
+    four concurrent batches took ~122s against ~160s back-to-back: the
+    provider queues rather than parallelizes, so there's perhaps 1.5x to be
+    had. A pool of 2 (one process-wide semaphore, `LLM_CONCURRENCY`) takes
+    most of it; more only lengthens the queue.
+  - *Responses are streamed, with a stall timeout.* A non-streaming call
+    sends nothing for the whole generation, and a socket silent for minutes
+    gets dropped somewhere along the path without notice — found as three
+    ESTABLISHED connections, zero progress and a healthy provider, every
+    call slot held by a zombie. Streaming keeps bytes moving, and "no bytes
+    for 240s" becomes a retryable failure. (240, not 90: the window has to
+    outlast *queue wait* at our own concurrency, or it kills requests that
+    are merely waiting their turn and retries them to the back of the
+    queue — which made one run slower, not safer.)
+  - *Every call has a token fuse.* A reasoning model occasionally loops and
+    generates until its context is exhausted — seen as two connections
+    pulling ~20KB/s for fifteen minutes. It's a sampling accident (the same
+    prompt finished in 10s when re-run), so each call states roughly how
+    long a good answer is; that becomes a server-side `num_predict` cap
+    (which also stops the quota burning) plus a client-side ceiling, and
+    tripping either is retried. A summary reply cut off by the cap is
+    salvaged entry by entry, and only the missing files are re-asked.
+  - *Polling stays cheap.* Partial graphs are versioned; a poll says which
+    version it has and gets the graph back only when it changed, so polling
+    every ~1s costs a few hundred bytes most of the time.
+  Measured on psf/requests (121 files, 40 PRs), free tier: explorable graph
+  at **1.5s**, finished at **~3m 25s** (summaries 168s ‖ PR history 184s,
+  then the map in 17s), no file left without a summary. The previous
+  sequential pipeline — ~30 default-effort calls with 2s sleeps between
+  them, nothing shown until the end — works out to upwards of 20 minutes
+  for the same repo (estimated from per-call timings, not re-measured).
+  The viewer shows all of this: a stage tracker with counts and timings,
+  an activity feed, shimmer placeholders on cards whose summary isn't
+  written yet, and a "map …" tab that enables when the last stage lands.
 - **Explain** (`backend/app/explain.py`) — three interactive, on-demand
   "ask why" variants, each persisted server-side and shared with every
   future visitor to that repo rather than kept per-browser: a highlighted
@@ -129,9 +188,11 @@ tried, and would mostly show up as missing edges.
     path. Returns immediately: `{status: "done", graph}` if already cached,
     otherwise `{job_id, status: "running"}` and starts the pipeline in a
     background thread (see `backend/app/jobs.py`).
-  - `GET /api/analyze/{job_id}` — poll a job's `status` ("running" / "done"
-    / "error"), current `stage` (e.g. "summarizing files (batch 2/6)"), and
-    once done, the resulting `graph`.
+  - `GET /api/analyze/{job_id}?have=N` — poll a job's `status` ("running" /
+    "done" / "error") and `progress` (every stage's status, counts and
+    timing, plus a feed of recent events). While running, `graph` is the
+    *partial* graph (`partial: true`) — sent only when its version differs
+    from `have`; once done, the final one.
   - `POST /api/repos/{owner}/{name}/architecture {force_refresh?}` — build
     (or return the cached) architecture map for an already-analyzed repo.
     New analyses carry it in the graph; this backfills older caches with one
@@ -169,8 +230,9 @@ tried, and would mostly show up as missing edges.
   file exist?"). Mermaid runs in strict security mode with SVG labels and
   no click directives; node clicks are wired on the rendered SVG. It's
   lazy-loaded with the map so the landing bundle is unchanged.
-  The landing page uses the async job endpoints and polls every 3s,
-  displaying the live stage text while a fresh analysis runs.
+  The landing page uses the async job endpoints, polling about once a
+  second: it shows the stage tracker for the first few seconds, then opens
+  the viewer on the partial graph with the tracker as a collapsible HUD.
 
 ## Running locally
 

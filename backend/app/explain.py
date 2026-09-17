@@ -10,6 +10,10 @@ from app.audience import AUDIENCE_FRAMING
 from app.llm import call_llm, call_with_retry
 
 CONTEXT_LINES = 15
+# Someone is waiting on these with the panel open, and they're 2-4 sentence
+# answers grounded in text handed to the model — low reasoning effort roughly
+# halves the wait without changing what gets said.
+ANSWER_EFFORT = "low"
 MAX_SELECTION_CHARS = 4000
 DEFAULT_QUESTION = "Why is this code here / what is it used for?"
 DEFAULT_FILE_QUESTION = "Why does this file exist / what is it necessary for in the wider project?"
@@ -71,7 +75,7 @@ def explain_selection(
     selected_text = (selected_text or "\n".join(lines[start_line - 1 : end_line]))[:MAX_SELECTION_CHARS]
     context = _extract_context(file_content, start_line, end_line)
     prompt = _prompt(path, selected_text, context, question or DEFAULT_QUESTION, file_summary, dependencies)
-    return call_with_retry(lambda: call_llm(prompt)).strip()
+    return call_with_retry(lambda: call_llm(prompt, think=ANSWER_EFFORT, max_tokens=1500)).strip()
 
 
 def _file_prompt(path: str, file_summary: str, dependencies: list[str], dependents: list[str], question: str) -> str:
@@ -105,7 +109,7 @@ def explain_file(
     question: str | None = None,
 ) -> str:
     prompt = _file_prompt(path, file_summary, dependencies, dependents, question or DEFAULT_FILE_QUESTION)
-    return call_with_retry(lambda: call_llm(prompt)).strip()
+    return call_with_retry(lambda: call_llm(prompt, think=ANSWER_EFFORT, max_tokens=1500)).strip()
 
 
 def _project_prompt(owner: str, name: str, overview: str, question: str) -> str:
@@ -124,4 +128,4 @@ Answer in 2-4 sentences.
 
 def explain_project(owner: str, name: str, overview: str, question: str | None = None) -> str:
     prompt = _project_prompt(owner, name, overview, question or DEFAULT_PROJECT_QUESTION)
-    return call_with_retry(lambda: call_llm(prompt)).strip()
+    return call_with_retry(lambda: call_llm(prompt, think=ANSWER_EFFORT, max_tokens=1500)).strip()

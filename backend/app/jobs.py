@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 
 from app.errors import PipelineError
 from app.pipeline import refresh_dependencies, run_pipeline
+from app.progress import Reporter
 
 Status = str  # "pending" | "running" | "done" | "error"
 
@@ -27,10 +28,16 @@ class Job:
     id: str
     repo_url: str
     status: Status = "pending"
-    stage: str = ""
     result: dict | None = None
     error: str | None = None
     created_at: float = field(default_factory=time.time)
+    # Live stage tracker + partial graph, written by the pipeline thread and
+    # read by polls (see progress.py).
+    reporter: Reporter = field(default_factory=Reporter)
+
+    @property
+    def stage(self) -> str:
+        return self.reporter.text
 
 
 _jobs: dict[str, Job] = {}
@@ -49,9 +56,9 @@ def start_job(repo_url: str, force_refresh: bool = False, refresh_edges_only: bo
         job.status = "running"
         try:
             if refresh_edges_only:
-                job.result = refresh_dependencies(repo_url, on_stage=_make_reporter(job))
+                job.result = refresh_dependencies(repo_url, on_stage=job.reporter.note)
             else:
-                job.result = run_pipeline(repo_url, force_refresh=force_refresh, on_stage=_make_reporter(job))
+                job.result = run_pipeline(repo_url, force_refresh=force_refresh, reporter=job.reporter)
             job.status = "done"
         except Exception as e:
             job.error = _friendly_error(e)
@@ -59,13 +66,6 @@ def start_job(repo_url: str, force_refresh: bool = False, refresh_edges_only: bo
 
     threading.Thread(target=run, daemon=True).start()
     return job
-
-
-def _make_reporter(job: Job):
-    def report(stage: str) -> None:
-        job.stage = stage
-
-    return report
 
 
 def _friendly_error(e: Exception) -> str:

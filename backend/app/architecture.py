@@ -50,6 +50,16 @@ MAX_ATTEMPTS = 2
 # Cool sampling: this is a structured-output task where the second run
 # over the same repo should look like the first, not a creative one.
 TEMPERATURE = 0.2
+# Low reasoning effort. Measured on psf/requests: 17s at "low" against ~300s
+# at the default, for maps of the same quality (same kind of groups, real
+# members, sensible labeled flows). The prompt is ~29k characters of listing,
+# and at default effort the model deliberates over all of it at length; the
+# validator below — not the model's care — is what guarantees integrity.
+EFFORT = "low"
+# A repair round is a whole second model call, so it's reserved for a map
+# that is actually unusable or lost a real share of itself to validation. A
+# couple of dropped edges is the validator doing its job, not a failed map.
+REPAIR_IF_DROPPED_SHARE = 0.25
 # Edge labels that say nothing a line doesn't already say. Dropped so the
 # diagram shows a bare arrow instead of "imports" thirty times.
 EMPTY_LABELS = {"imports", "import", "uses", "use", "depends on", "dependency", "calls", "call", "references"}
@@ -367,7 +377,7 @@ def generate_architecture(
             on_stage("mapping architecture" + (f" (repair attempt {attempt + 1})" if attempt else ""))
         prompt = _prompt(owner, name, overview, listing, feedback)
         try:
-            raw_text = call_with_retry(lambda: call_llm(prompt, temperature=TEMPERATURE))
+            raw_text = call_with_retry(lambda: call_llm(prompt, temperature=TEMPERATURE, think=EFFORT, max_tokens=5000))
             raw = _parse_json_object(raw_text)
         except PipelineError:
             return best
@@ -377,10 +387,10 @@ def generate_architecture(
         result, problems = validate_architecture(raw, graph["nodes"])
         if result is not None:
             best = result
-        # Only path/edge problems are worth another LLM round trip; caps and
-        # empties are already fixed by the validator itself.
-        hard = [p for p in problems if "does not exist" in p or "not a member or external" in p or "usable members" in p or "too many edges" in p]
-        if result is not None and not hard:
+        asked = len(raw.get("members") or raw.get("nodes") or []) + len(raw.get("edges") or [])
+        kept = (len(result["nodes"]) + len(result["edges"])) if result else 0
+        dropped_share = 1 - kept / asked if asked else 1.0
+        if result is not None and dropped_share < REPAIR_IF_DROPPED_SHARE:
             return result
-        feedback = "\n".join(f"- {p}" for p in (hard or problems)) or "the graph was empty"
+        feedback = "\n".join(f"- {p}" for p in problems) or "the graph was empty"
     return best

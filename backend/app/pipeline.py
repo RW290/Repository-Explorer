@@ -12,6 +12,8 @@ a request on it, since most hosting platforms time out long-lived requests.
 import json
 import re
 import tempfile
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from collections.abc import Callable
 from pathlib import Path
 
@@ -19,7 +21,8 @@ from app.architecture import generate_architecture, recompute_backing
 from app.imports import RESOLVER_VERSION, build_dependency_graph
 from app.merge import merge
 from app.miner import run_miner
-from app.parser import clone_repo, discover_files, run_parser
+from app.parser import clone_repo, discover_files, folder_summary_lines, generate_overview, parse_structure, summarize_files
+from app.progress import Reporter
 
 CACHE_DIR = Path(__file__).resolve().parent.parent / ".cache"
 
@@ -105,26 +108,89 @@ def refresh_dependencies(repo_url: str, on_stage: Callable[[str], None] | None =
     return graph
 
 
-def run_pipeline(repo_url: str, force_refresh: bool = False, on_stage: Callable[[str], None] | None = None) -> dict:
+def run_pipeline(
+    repo_url: str,
+    force_refresh: bool = False,
+    on_stage: Callable[[str], None] | None = None,
+    reporter: Reporter | None = None,
+) -> dict:
+    """Clone → structure → (summaries ‖ PR history ‖ overview) → merge → map.
+
+    Two things shape the ordering. First, structure needs no model, so the
+    graph is published to `reporter` seconds in and re-published as summaries
+    land: time-to-first-useful-view is decoupled from time-to-finished.
+    Second, the three model-bound stages in the middle don't depend on each
+    other — history needs only the file list, the overview only the README —
+    so they overlap instead of queueing. The map goes last because it is the
+    one stage that reads the summaries."""
     owner, name = parse_repo_url(repo_url)
     cache_path = cache_path_for(owner, name)
 
     if not force_refresh and cache_path.exists():
         return json.loads(cache_path.read_text())
 
-    with tempfile.TemporaryDirectory() as tmp:
-        nodes, overview = run_parser(f"https://github.com/{owner}/{name}.git", owner, name, Path(tmp), on_stage=on_stage)
+    reporter = reporter or Reporter()
+    canonical_url = f"https://github.com/{owner}/{name}"
 
-    known_files = {n.id for n in nodes if n.type == "file"}
-    extractions = run_miner(owner, name, known_files, on_stage=on_stage)
-    if on_stage:
-        on_stage("merging annotations into graph")
-    graph = merge(nodes, extractions, overview)
-    graph["repo_url"] = f"https://github.com/{owner}/{name}"
+    with tempfile.TemporaryDirectory() as tmp:
+        repo_root, nodes = parse_structure(f"{canonical_url}.git", Path(tmp), reporter)
+        file_nodes = [n for n in nodes if n.type == "file"]
+        known_files = {n.id for n in file_nodes}
+
+        def snapshot(extractions: list[dict], overview: str) -> dict:
+            graph = merge(nodes, extractions, overview)
+            graph["repo_url"] = canonical_url
+            graph["resolver_version"] = RESOLVER_VERSION
+            graph["architecture"] = None
+            return graph
+
+        reporter.publish(snapshot([], ""))
+
+        # Whatever has landed so far. Three kinds of worker write here (summary
+        # batches, the overview, PR history), each re-publishing the partial
+        # graph so the viewer shows it without waiting for the others.
+        lock = threading.Lock()
+        landed: dict = {"extractions": [], "overview": ""}
+        by_id = {n.id: n for n in file_nodes}
+
+        def republish() -> None:
+            reporter.publish(snapshot(landed["extractions"], landed["overview"]))
+
+        def apply_summaries(batch: dict[str, str]) -> None:
+            with lock:
+                for path, summary in batch.items():
+                    if path in by_id:
+                        by_id[path].summary = summary
+                republish()
+
+        def overview_stage() -> str:
+            text = generate_overview(repo_root, owner, name, folder_summary_lines(nodes), reporter)
+            with lock:
+                landed["overview"] = text
+                republish()
+            return text
+
+        def history_stage() -> list[dict]:
+            found = run_miner(owner, name, known_files, reporter)
+            with lock:
+                landed["extractions"] = found
+                republish()
+            return found
+
+        with ThreadPoolExecutor(max_workers=2) as side:
+            history = side.submit(history_stage)
+            overview_future = side.submit(overview_stage)
+            summarize_files(repo_root, file_nodes, reporter, on_batch=apply_summaries)
+            overview = overview_future.result()
+            extractions = history.result()
+
+    graph = snapshot(extractions, overview)
+    reporter.publish(graph)
     # Last, because it reads the summaries and overview the earlier stages
     # produced. Best-effort (None on failure), like the overview.
-    graph["architecture"] = generate_architecture(owner, name, graph, on_stage=on_stage)
-    graph["resolver_version"] = RESOLVER_VERSION
+    reporter.start("map")
+    graph["architecture"] = generate_architecture(owner, name, graph, on_stage=reporter.note)
+    reporter.finish("map", None if graph["architecture"] else "skipped (no usable map)")
 
     CACHE_DIR.mkdir(exist_ok=True)
     cache_path.write_text(json.dumps(graph, indent=2))

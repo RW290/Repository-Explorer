@@ -10,12 +10,13 @@ batched per the latency constraint.
 
 import json
 import time
-from collections.abc import Callable
 from dataclasses import dataclass
 
 from app import github_client
 from app.audience import AUDIENCE_FRAMING
-from app.llm import call_llm, call_with_retry
+from app.errors import GitHubAccessError
+from app.llm import LLM_CONCURRENCY, call_llm, call_with_retry
+from app.progress import Reporter
 
 PR_PAGE_SIZE = 100
 MAX_PRS_TO_MINE = 40
@@ -141,40 +142,56 @@ Pull requests:
 """
 
 
-def extract_rationales(
-    owner: str, name: str, prs: list[RawPR], on_stage: Callable[[str], None] | None = None
-) -> list[dict]:
+def extract_rationales(owner: str, name: str, prs: list[RawPR], reporter: Reporter | None = None) -> list[dict]:
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     items = []
     for pr in prs:
         stated = _candidate_stated_rationale(pr)
         diff = "" if stated else github_client.pr_diff(owner, name, pr.number)[:4000]
         items.append({"number": pr.number, "title": pr.title, "files": pr.files, "stated": stated, "diff": diff})
 
-    extractions: list[dict] = []
-    batch_count = -(-len(items) // RATIONALE_BATCH_SIZE) if items else 0
-    for i in range(0, len(items), RATIONALE_BATCH_SIZE):
-        if i > 0:
-            time.sleep(2)
-        if on_stage:
-            on_stage(f"extracting PR rationale (batch {i // RATIONALE_BATCH_SIZE + 1}/{batch_count})")
-        batch = items[i : i + RATIONALE_BATCH_SIZE]
+    batches = [items[i : i + RATIONALE_BATCH_SIZE] for i in range(0, len(items), RATIONALE_BATCH_SIZE)]
+
+    def run(batch: list[dict]) -> list[dict]:
         prompt = _extraction_prompt(batch)
-        raw = call_with_retry(lambda: call_llm(prompt))
+        # Default reasoning effort, unlike every other prompt here — measured,
+        # not assumed. At "low" the stated/inferred/confidence labels came out
+        # identical, but the text regressed to quoting the author ("Honestly I
+        # have no idea why this lib used netloc…", or a bare link) where the
+        # default states the engineering reason ("prevents the credential leak
+        # disclosed in CVE-2024-47081"). That restatement is the product. It
+        # costs ~16s a batch against ~10s, and runs alongside the summaries.
+        raw = call_with_retry(lambda: call_llm(prompt, max_tokens=3500 + len(batch) * 500))
         cleaned = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
         try:
             results = json.loads(cleaned)
-            extractions.extend(results)
+            if isinstance(results, list):
+                return [r for r in results if isinstance(r, dict)]
         except json.JSONDecodeError:
-            for item in batch:
-                extractions.append(
-                    {
-                        "number": item["number"],
-                        "rationale_stated": item["stated"],
-                        "rationale_inferred": None,
-                        "confidence": "low",
-                        "diff_summary": "Diff summary unavailable (LLM response could not be parsed).",
-                    }
-                )
+            pass
+        return [
+            {
+                "number": item["number"],
+                "rationale_stated": item["stated"],
+                "rationale_inferred": None,
+                "confidence": "low",
+                "diff_summary": "Diff summary unavailable (LLM response could not be parsed).",
+            }
+            for item in batch
+        ]
+
+    extractions: list[dict] = []
+    done = 0
+    if batches:
+        with ThreadPoolExecutor(max_workers=LLM_CONCURRENCY) as pool:
+            futures = {pool.submit(run, batch): batch for batch in batches}
+            for future in as_completed(futures):
+                extractions.extend(future.result())
+                done += len(futures[future])
+                if reporter:
+                    reporter.advance("history", done)
+                    reporter.event("read PRs " + ", ".join(f"#{item['number']}" for item in futures[future]), kind="history")
 
     by_number = {pr.number: pr for pr in prs}
     merged = []
@@ -194,11 +211,33 @@ def extract_rationales(
     return merged
 
 
-def run_miner(
-    owner: str, name: str, known_files: set[str], on_stage: Callable[[str], None] | None = None
-) -> list[dict]:
-    if on_stage:
-        on_stage("fetching merged pull requests")
-    prs = fetch_merged_prs(owner, name)
+_TRANSIENT_NETWORK_MARKERS = ("connection reset", "timed out", "timeout", "eof", "temporarily", "502", "503", "504")
+
+
+def _fetch_with_retry(owner: str, name: str, attempts: int = 3) -> list[RawPR]:
+    """A dropped connection to GitHub minutes into an analysis shouldn't throw
+    the whole thing away. Only network-shaped failures are retried: a missing
+    token or a private repo won't fix itself and should surface at once."""
+    for attempt in range(attempts):
+        try:
+            return fetch_merged_prs(owner, name)
+        except GitHubAccessError as e:
+            transient = any(marker in str(e).lower() for marker in _TRANSIENT_NETWORK_MARKERS)
+            if not transient or attempt == attempts - 1:
+                raise
+            time.sleep(2 * (attempt + 1))
+    return []
+
+
+def run_miner(owner: str, name: str, known_files: set[str], reporter: Reporter | None = None) -> list[dict]:
+    if reporter:
+        reporter.start("history", detail="fetching merged pull requests")
+    prs = _fetch_with_retry(owner, name)
     non_trivial = [pr for pr in prs if not is_trivial(pr, known_files)]
-    return extract_rationales(owner, name, non_trivial, on_stage=on_stage)
+    if reporter:
+        reporter.start("history", total=len(non_trivial) or None, detail=None if non_trivial else "no substantive PRs")
+        reporter.event(f"{len(prs)} merged PRs fetched, {len(non_trivial)} worth reading")
+    extractions = extract_rationales(owner, name, non_trivial, reporter=reporter)
+    if reporter:
+        reporter.finish("history", f"{len(extractions)} of {len(prs)} PRs explained")
+    return extractions

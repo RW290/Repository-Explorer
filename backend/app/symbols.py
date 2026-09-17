@@ -167,7 +167,7 @@ def explain_symbols(path: str, content: str, file_summary: str | None = None) ->
     for i in range(0, len(symbols), SYMBOLS_PER_CALL):
         batch = [(s, _snippet(lines, s)) for s in symbols[i : i + SYMBOLS_PER_CALL]]
         prompt = _prompt(path, file_summary, batch)
-        raw = call_with_retry(lambda: call_llm(prompt, temperature=TEMPERATURE))
+        raw = call_with_retry(lambda: call_llm(prompt, temperature=TEMPERATURE, think="low", max_tokens=600 + len(batch) * 120))
         by_key: dict[tuple[str, int], str] = {}
         by_name: dict[str, str] = {}
         for item in _parse(raw):

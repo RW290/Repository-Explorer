@@ -69,7 +69,13 @@ class AnalysisStatus(BaseModel):
     job_id: str | None = None
     status: str
     stage: str = ""
+    # While status is "running" this is the *partial* graph — structure first,
+    # summaries filling in — and `partial` says so. Omitted from a poll when
+    # the client already has the current version (see `have` below).
     graph: Graph | None = None
+    partial: bool = False
+    # Stage tracker, event feed and the partial graph's version.
+    progress: dict | None = None
     error: str | None = None
 
 
@@ -169,13 +175,27 @@ def start_analysis(payload: AnalyzeRequest) -> AnalysisStatus:
 
 
 @app.get("/api/analyze/{job_id}", response_model=AnalysisStatus)
-def get_analysis(job_id: str) -> AnalysisStatus:
+def get_analysis(job_id: str, have: int = Query(default=0)) -> AnalysisStatus:
+    """Poll a job. `have` is the partial-graph version the client already
+    holds: the graph (tens of KB) is only sent again when it has changed,
+    so polling every second costs a few hundred bytes most of the time."""
     job = get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="No job with that id")
-    graph = Graph.model_validate(job.result) if job.result is not None else None
+    progress = job.reporter.snapshot()
+    if job.result is not None:
+        return AnalysisStatus(
+            job_id=job.id, status=job.status, stage=job.stage, graph=Graph.model_validate(job.result), progress=progress, error=job.error
+        )
+    partial = job.reporter.partial() if progress["partial_version"] != have else None
     return AnalysisStatus(
-        job_id=job.id, status=job.status, stage=job.stage, graph=graph, error=job.error
+        job_id=job.id,
+        status=job.status,
+        stage=job.stage,
+        graph=Graph.model_validate(partial) if partial is not None else None,
+        partial=partial is not None,
+        progress=progress,
+        error=job.error,
     )
 
 

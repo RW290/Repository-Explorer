@@ -9,6 +9,7 @@ edges. LLM calls are used only for the batched file summaries and the
 project overview, never for the dependency edges themselves.
 """
 
+import re
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -16,8 +17,9 @@ from pathlib import Path
 
 from app.audience import AUDIENCE_FRAMING
 from app.errors import ConfigurationError, PipelineError, RepoCloneError
-from app.imports import build_dependency_graph
-from app.llm import call_llm, call_with_retry
+from app.imports import build_dependency_graph, resolver_for
+from app.llm import LLM_CONCURRENCY, call_llm, call_with_retry
+from app.progress import Reporter
 
 EXCLUDE_DIR_NAMES = {
     ".git", "__pycache__", "node_modules", ".venv", "venv",
@@ -41,10 +43,11 @@ EXCLUDE_FILE_SUFFIXES = (
     ".pyc", ".so", ".dylib", ".dll", ".exe", ".bin", ".class",
     ".mp3", ".mp4", ".mov", ".wav",
     ".db", ".sqlite",
+    # Design-tool documents: binary (or binary-ish) and meaningless as text.
+    ".ai", ".psd", ".sketch", ".fig", ".xd", ".eps", ".indd",
 )
 ROOT_FOLDER_ID = "(root)"
 MAX_FILE_CHARS_FOR_SUMMARY = 3000
-SUMMARY_BATCH_SIZE = 6
 OVERVIEW_README_NAMES = ("README.md", "README.rst", "README.txt", "README")
 MAX_README_CHARS_FOR_OVERVIEW = 6000
 
@@ -144,61 +147,225 @@ def build_nodes(repo_root: Path, files: list[Path], dependencies: dict[str, list
     return folder_nodes + nodes
 
 
-def _summary_prompt(batch: list[tuple[str, str, list[str]]]) -> str:
+# --- Summaries ---------------------------------------------------------------
+#
+# The slow part of an analysis, and what makes it slow is *output*: a reasoning
+# model generates tokens serially, so cost tracks how much it is asked to
+# write, not how much it reads. Every choice below is about writing less, in
+# fewer calls, in the order that matters most:
+#
+# - Tiers. A source file earns a paragraph about its design. A README, a YAML
+#   workflow or a test fixture earns a sentence or two. A LICENSE or an empty
+#   `__init__.py` earns no LLM call at all — a template says all there is to
+#   say. Most repos are majority non-source, so this is most of the saving.
+# - Size-budgeted batches rather than a fixed six files: many small files
+#   share a call, so per-call overhead (the framing, the model's warm-up
+#   reasoning) is paid fewer times.
+# - Most-connected files first, because results stream to the viewer as they
+#   land (see progress.py) and the hubs are what a reader opens first.
+
+SUMMARY_TIERS = {
+    # tier: (max input chars per file, max files per batch, input budget per batch)
+    "source": (MAX_FILE_CHARS_FOR_SUMMARY, 8, 16_000),
+    "brief": (1_200, 16, 12_000),
+}
+_BOILERPLATE_NAMES = {
+    "license": "The project's license text.",
+    "license.md": "The project's license text.",
+    "license.txt": "The project's license text.",
+    "copying": "The project's license text.",
+    "notice": "Attribution and copyright notices required by the license.",
+    ".gitignore": "Paths git should not track (build output, caches, local environment files).",
+    ".gitattributes": "Per-path git attributes such as line-ending and diff handling.",
+    ".editorconfig": "Editor-agnostic formatting defaults (indentation, line endings) for contributors.",
+    ".nojekyll": "Empty marker telling GitHub Pages not to run Jekyll on this directory.",
+    "py.typed": "Empty PEP 561 marker declaring that this package ships type information.",
+    ".dockerignore": "Paths excluded from the Docker build context.",
+    ".npmrc": "npm client configuration for this project.",
+    ".prettierignore": "Paths the Prettier formatter should skip.",
+    ".eslintignore": "Paths the ESLint linter should skip.",
+}
+_MIN_MEANINGFUL_CHARS = 40
+SUMMARY_UNAVAILABLE = "Summary unavailable (the model's response for this file could not be parsed)."
+
+
+def _templated_summary(path: str, text: str) -> str | None:
+    """A summary that needs no model: well-known boilerplate, or a file with
+    nothing in it to summarize."""
+    name = Path(path).name.lower()
+    if name in _BOILERPLATE_NAMES:
+        return _BOILERPLATE_NAMES[name]
+    if len("".join(text.split())) < _MIN_MEANINGFUL_CHARS:
+        if name == "__init__.py":
+            return "Empty package marker: makes this directory importable as a Python package and nothing more."
+        return "Effectively empty file (a placeholder or marker); there is no content to summarize."
+    return None
+
+
+def _summary_prompt(batch: list[tuple[str, str, list[str]]], tier: str = "source") -> str:
+    limit = SUMMARY_TIERS[tier][0]
     files_text = "\n\n".join(
         f"### {path}\n"
         + (f"Depends on (imports): {', '.join(deps)}\n" if deps else "")
-        + f"```\n{content[:MAX_FILE_CHARS_FOR_SUMMARY]}\n```"
+        + f"```\n{content[:limit]}\n```"
         for path, content, deps in batch
     )
-    return f"""For each file below, write a one-paragraph summary of its role in the codebase.
-
-{AUDIENCE_FRAMING}
-
+    if tier == "brief":
+        ask = (
+            "For each file below, write a summary of its role in the project in ONE or TWO "
+            "sentences. These are supporting files (docs, configuration, data, tests, templates): "
+            "say what the file is for and anything about it a newcomer would not guess, and stop."
+        )
+        guidance = ""
+    else:
+        ask = "For each file below, write a one-paragraph summary of its role in the codebase."
+        guidance = """
 Where a file's dependencies are listed, use them to ground *why* this file
 is scoped the way it is — what responsibility it holds itself versus what
 it delegates to the files it depends on. That's more valuable than a plain
 restatement of the code.
+"""
+    return f"""{ask}
 
-Return ONLY a JSON array of objects with "path" and "summary" fields, no other text.
+{AUDIENCE_FRAMING}
+{guidance}
+Return ONLY a JSON array of objects with "path" and "summary" fields, one per
+file, no other text.
 
 Files:
 {files_text}
 """
 
 
-def summarize_files(
-    repo_root: Path, nodes: list[ParsedNode], on_stage: Callable[[str], None] | None = None
-) -> dict[str, str]:
+def _parse_summaries(raw: str) -> dict[str, str] | None:
     import json
-    import time
+
+    cleaned = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    for candidate in (cleaned, cleaned[cleaned.find("[") : cleaned.rfind("]") + 1] if "[" in cleaned else ""):
+        if not candidate:
+            continue
+        try:
+            data = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(data, list):
+            return {
+                str(item["path"]): str(item["summary"])
+                for item in data
+                if isinstance(item, dict) and item.get("path") and item.get("summary")
+            }
+    # Not valid JSON as a whole — typically cut off by the token cap. The
+    # entries before the cut are still good: take every complete object, and
+    # let the caller re-ask only for the files that are missing.
+    salvaged: dict[str, str] = {}
+    for match in re.finditer(r'\{\s*"path"\s*:\s*("(?:[^"\\]|\\.)*")\s*,\s*"summary"\s*:\s*("(?:[^"\\]|\\.)*")\s*\}', cleaned):
+        try:
+            salvaged[json.loads(match.group(1))] = json.loads(match.group(2))
+        except json.JSONDecodeError:
+            continue
+    return salvaged or None
+
+
+def _plan_batches(entries: list[tuple[str, str, list[str]]], tier: str) -> list[list[tuple[str, str, list[str]]]]:
+    limit, max_files, budget = SUMMARY_TIERS[tier]
+    batches: list[list[tuple[str, str, list[str]]]] = []
+    current: list[tuple[str, str, list[str]]] = []
+    used = 0
+    for entry in entries:
+        size = min(len(entry[1]), limit) + 120
+        if current and (len(current) >= max_files or used + size > budget):
+            batches.append(current)
+            current, used = [], 0
+        current.append(entry)
+        used += size
+    if current:
+        batches.append(current)
+    return batches
+
+
+def summarize_files(
+    repo_root: Path,
+    nodes: list[ParsedNode],
+    reporter: Reporter | None = None,
+    on_batch: Callable[[dict[str, str]], None] | None = None,
+) -> dict[str, str]:
+    """Summaries for every file node. `on_batch` fires as each batch lands
+    (from worker threads) so the caller can stream them to the viewer."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
     summaries: dict[str, str] = {}
-    contents = []
+    dependents: dict[str, int] = {}
+    for n in nodes:
+        for dep in n.dependencies:
+            dependents[dep] = dependents.get(dep, 0) + 1
+
+    tiers: dict[str, list[tuple[str, str, list[str]]]] = {"source": [], "brief": []}
+    templated: dict[str, str] = {}
     for n in nodes:
         try:
             text = (repo_root / n.id).read_text(encoding="utf-8", errors="ignore")
         except OSError:
             text = ""
-        contents.append((n.id, text, n.dependencies))
+        template = _templated_summary(n.id, text)
+        if template is not None:
+            templated[n.id] = template
+            continue
+        tier = "source" if resolver_for(n.id) is not None else "brief"
+        tiers[tier].append((n.id, text, n.dependencies))
 
-    batch_count = -(-len(contents) // SUMMARY_BATCH_SIZE) if contents else 0
-    for i in range(0, len(contents), SUMMARY_BATCH_SIZE):
-        if i > 0:
-            time.sleep(2)
-        if on_stage:
-            on_stage(f"summarizing files (batch {i // SUMMARY_BATCH_SIZE + 1}/{batch_count})")
-        batch = contents[i : i + SUMMARY_BATCH_SIZE]
-        prompt = _summary_prompt(batch)
-        raw = call_with_retry(lambda: call_llm(prompt))
-        cleaned = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-        try:
-            results = json.loads(cleaned)
-            for item in results:
-                summaries[item["path"]] = item["summary"]
-        except (json.JSONDecodeError, KeyError, TypeError):
-            for path, _, _ in batch:
-                summaries.setdefault(path, "Summary unavailable (LLM response could not be parsed).")
+    # Hubs first: what the most files depend on, then what depends on the most.
+    for entries in tiers.values():
+        entries.sort(key=lambda e: -(dependents.get(e[0], 0) * 2 + len(e[2])))
+
+    total = len(nodes)
+    done = len(templated)
+    if reporter:
+        reporter.start("summaries", total=total)
+    if templated:
+        summaries.update(templated)
+        if reporter:
+            reporter.advance("summaries", done)
+            reporter.event(f"{len(templated)} boilerplate/empty files summarized without the model")
+        if on_batch:
+            on_batch(templated)
+
+    plan = [(tier, batch) for tier in ("source", "brief") for batch in _plan_batches(tiers[tier], tier)]
+
+    def run(tier: str, batch: list[tuple[str, str, list[str]]]) -> dict[str, str]:
+        prompt = _summary_prompt(batch, tier)
+        # ~350 tokens covers a paragraph, ~110 a sentence or two; doubled for
+        # slack. A fuse against runaway generation, not a length target.
+        budget = 600 + len(batch) * (700 if tier == "source" else 220)
+        result: dict[str, str] = {}
+        # One malformed reply used to blank the whole batch; ask once more
+        # before giving up, and keep whatever did parse.
+        remaining = batch
+        for _ in range(2):
+            ask = prompt if remaining is batch else _summary_prompt(remaining, tier)
+            parsed = _parse_summaries(call_with_retry(lambda: call_llm(ask, think="low", max_tokens=budget)))
+            if parsed:
+                result.update(parsed)
+            remaining = [entry for entry in batch if entry[0] not in result]
+            if not remaining:
+                break
+        return {path: result.get(path, SUMMARY_UNAVAILABLE) for path, _, _ in batch}
+
+    if plan:
+        with ThreadPoolExecutor(max_workers=LLM_CONCURRENCY) as pool:
+            futures = {pool.submit(run, tier, batch): batch for tier, batch in plan}
+            for future in as_completed(futures):
+                batch_result = future.result()
+                summaries.update(batch_result)
+                done += len(batch_result)
+                if reporter:
+                    reporter.advance("summaries", done)
+                    names = [Path(path).name for path in batch_result][:4]
+                    more = len(batch_result) - len(names)
+                    reporter.event("summarized " + ", ".join(names) + (f" +{more} more" if more > 0 else ""), kind="summary")
+                if on_batch:
+                    on_batch(batch_result)
+    if reporter:
+        reporter.finish("summaries", f"{total} files in {len(plan)} model calls")
     return summaries
 
 
@@ -246,46 +413,57 @@ rather than running together with the prose.
 """
 
 
-def generate_overview(repo_root: Path, owner: str, name: str, folder_summaries: list[str]) -> str:
+def generate_overview(
+    repo_root: Path, owner: str, name: str, folder_summaries: list[str], reporter: Reporter | None = None
+) -> str:
     """Best-effort: an overview is a nice-to-have orientation, not core to the
     graph, so a transient LLM failure degrades to an empty string rather than
-    failing the whole analysis."""
+    failing the whole analysis. It reads only the README and the folder
+    listing — not the file summaries — so it runs alongside them."""
+    if reporter:
+        reporter.start("overview")
     prompt = _overview_prompt(owner, name, _find_readme(repo_root), folder_summaries)
     try:
-        return call_with_retry(lambda: call_llm(prompt)).strip()
+        overview = call_with_retry(lambda: call_llm(prompt, think="low", max_tokens=1500)).strip()
     except PipelineError:
-        return ""
+        overview = ""
+    if reporter:
+        reporter.finish("overview", None if overview else "skipped (model unavailable)")
+        if overview:
+            reporter.event("project overview written")
+    return overview
 
 
-def run_parser(
-    repo_url: str, owner: str, name: str, workdir: Path, on_stage: Callable[[str], None] | None = None
-) -> tuple[list[ParsedNode], str]:
-    if on_stage:
-        on_stage("cloning repository")
+def parse_structure(repo_url: str, workdir: Path, reporter: Reporter | None = None) -> tuple[Path, list[ParsedNode]]:
+    """Everything that needs no model: clone, discover, resolve imports, build
+    nodes and folder summaries. Seconds, and already a graph worth looking at
+    — which is why the pipeline publishes it before starting the slow part."""
+    if reporter:
+        reporter.start("clone")
     repo_root = clone_repo(repo_url, workdir)
     files = discover_files(repo_root)
-    if on_stage:
-        on_stage(f"analyzing {len(files)} files")
+    if reporter:
+        reporter.finish("clone", f"{len(files)} files")
+        reporter.event(f"cloned — {len(files)} files worth showing")
+        reporter.start("imports")
     dependencies = build_dependency_graph(repo_root, files)
     nodes = build_nodes(repo_root, files, dependencies)
 
-    file_nodes = [n for n in nodes if n.type == "file"]
-    summaries = summarize_files(repo_root, file_nodes, on_stage=on_stage)
-    for n in file_nodes:
-        n.summary = summaries.get(n.id, "")
-
     children_by_folder: dict[str, list[str]] = {}
-    for n in file_nodes:
-        if n.parent:
+    for n in nodes:
+        if n.type == "file" and n.parent:
             children_by_folder.setdefault(n.parent, []).append(n.id)
-    folder_summaries = []
     for n in nodes:
         if n.type == "folder":
             n.summary = build_folder_summary(n.id, children_by_folder.get(n.id, []))
-            folder_summaries.append(f"- {n.id}: {n.summary}")
 
-    if on_stage:
-        on_stage("writing project overview")
-    overview = generate_overview(repo_root, owner, name, folder_summaries)
+    if reporter:
+        edges = sum(len(d) for d in dependencies.values())
+        linked = sum(1 for d in dependencies.values() if d)
+        reporter.finish("imports", f"{edges} edges from {linked} files")
+        reporter.event(f"resolved {edges} import edges across {len(children_by_folder)} folders")
+    return repo_root, nodes
 
-    return nodes, overview
+
+def folder_summary_lines(nodes: list[ParsedNode]) -> list[str]:
+    return [f"- {n.id}: {n.summary}" for n in nodes if n.type == "folder"]
