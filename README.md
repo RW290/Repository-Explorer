@@ -7,6 +7,12 @@ project's own pull requests — *why* things are the way they are.
 
 **Live**: [repository-explorer.replit.app](https://repository-explorer.replit.app)
 
+[`AI_ENGINEERING.md`](AI_ENGINEERING.md) walks through the AI engineering
+ideas used here — context engineering, structured output and validation,
+grounding, cost and latency control, reliability around a remote model —
+where each lives in the code, what it costs, and which well-known techniques
+are deliberately not used.
+
 It is built for an engineer reading an unfamiliar codebase to learn from it,
 so every piece of model-written text explains design rationale and
 tradeoffs rather than restating code. The priorities, in order: accuracy of
