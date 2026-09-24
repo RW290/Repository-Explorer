@@ -95,8 +95,6 @@ def _raise_for_graphql_errors(payload: dict, target: str) -> None:
 
 
 def _raise_for_gh_stderr(stderr: str, returncode: int, target: str) -> None:
-    """`gh` exits non-zero on GraphQL-level errors too, so the same conditions
-    _raise_for_graphql_errors handles on the token path arrive here as text."""
     lowered = stderr.lower()
     if "could not resolve to a repository" in lowered or "not found" in lowered:
         raise GitHubAccessError(
@@ -163,8 +161,6 @@ def graphql(query: str, variables: dict) -> dict:
 
 
 def pr_diff(owner: str, name: str, number: int) -> str:
-    """Best-effort: a missing diff degrades an annotation's confidence rather
-    than failing the run, so this returns "" instead of raising."""
     token = _token()
     if token:
         try:
@@ -189,12 +185,6 @@ def pr_diff(owner: str, name: str, number: int) -> str:
 
 
 def file_contents(owner: str, name: str, path: str) -> str:
-    """Fetch one file's raw text at the repo's default branch HEAD.
-
-    Unlike pr_diff, this raises rather than degrading silently — a missing
-    or unreadable file means there's nothing to show the reader who asked
-    to view it, not a best-effort annotation that can just be thinner.
-    """
     target = f"{owner}/{name}/{path}"
     token = _token()
 

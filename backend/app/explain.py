@@ -71,10 +71,6 @@ def explain_selection(
     dependencies: list[str] | None = None,
     selected_text: str | None = None,
 ) -> str:
-    """`selected_text` is what the reader actually highlighted, which can be a
-    fragment of a line rather than whole lines. Falling back to the full line
-    range when it's absent keeps callers that only know a range working, but
-    asks a blunter question than the reader intended."""
     lines = file_content.splitlines()
     selected_text = (selected_text or "\n".join(lines[start_line - 1 : end_line]))[:MAX_SELECTION_CHARS]
     context = _extract_context(file_content, start_line, end_line)
@@ -148,11 +144,6 @@ def _first_sentence(text: str, limit: int = MAP_SUMMARY_CHARS) -> str:
 
 
 def describe_map(graph: dict) -> str:
-    """The architecture map as the model should read it: each group with its
-    member files and what they do, externals, then every flow with whether
-    the import graph backs it. This is the whole context for a map question,
-    so the answer is about *this* diagram rather than about software in
-    general."""
     architecture = graph.get("architecture") or {}
     by_id = {n["id"]: n for n in graph.get("nodes", [])}
 
@@ -193,7 +184,6 @@ def describe_map(graph: dict) -> str:
 
 
 def _focus_block(graph: dict, focus_kind: str | None, focus_id: str | None) -> tuple[str, str | None]:
-    """(prompt text describing what the reader has selected, its display label)."""
     architecture = graph.get("architecture") or {}
     if focus_kind == "group":
         group = next((g for g in architecture.get("groups", []) if g["id"] == focus_id), None)
@@ -269,7 +259,6 @@ def explain_architecture(
     focus_kind: str | None = None,
     focus_id: str | None = None,
 ) -> tuple[str, str, str | None]:
-    """Returns (question as asked, answer, focus label or None)."""
     focus_text, focus_label = _focus_block(graph, focus_kind, focus_id)
     asked = (question or "").strip() or (DEFAULT_FOCUS_QUESTION if focus_label else DEFAULT_ARCHITECTURE_QUESTION)
     prompt = _architecture_prompt(owner, name, graph, asked, focus_text)

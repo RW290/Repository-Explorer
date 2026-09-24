@@ -219,8 +219,6 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer) return;
-    // The canvas is the viewer's own background plus the world of cards;
-    // panels, bars and the map sit on top and keep their own scrolling.
     const onCanvas = (target: EventTarget | null) =>
       target instanceof Element && (target === viewer || Boolean(target.closest(".world")));
 
@@ -346,7 +344,6 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
     setViewingSource(false);
   }
 
-  /** One step out: code view → file → folder → repo. */
   function goBackOneStep() {
     if (viewingSource) {
       setViewingSource(false);
@@ -357,8 +354,6 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
     }
   }
 
-  /** A click on a map node: select that file/folder without leaving the
-   * map. Map node ids are graph node ids. */
   function selectComponent(id: string) {
     const isExternal = id.startsWith("ext:");
     if (!isExternal && !byId.has(id)) return;
@@ -370,9 +365,6 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
     setViewingSource(Boolean(repo) && !isExternal && byId.get(id)?.type === "file");
   }
 
-  /** A click on one of the map's group boxes: select that section and open
-   * the Ask panel on it — a section has no file to show, so asking about it
-   * is what selecting it is for. */
   function selectGroup(groupId: string) {
     setSelectedGroupId(groupId);
     setSelectedComponentId(null);
@@ -388,9 +380,6 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
     setSelectedNodeId(null);
   }
 
-  /** Switch to the map from anywhere, keeping the reader's place: whatever
-   * file or folder they were on is selected on the map if it's a member
-   * (or, for a file that isn't, its folder if that is). */
   function goToMap() {
     if (mapStatus === "pending") return;
     const memberIds = new Set((architecture?.nodes ?? []).map((n) => n.id));
@@ -410,8 +399,6 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
     setSelectedNodeId(onMap);
   }
 
-  /** Switch to the folder explorer from the map. With a file or folder
-   * selected on the map, land on that same node; otherwise the folder grid. */
   function goToFolders() {
     setShowOverview(false);
     setMode("folders");
@@ -425,8 +412,6 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
     }
   }
 
-  /** Jump from a map component into the zoomable explorer at its file or
-   * folder. The mode stays "map", so the repo crumb leads back here. */
   function openInExplorer(node: GraphNode) {
     setSelectedComponentId(null);
     setViewingSource(false);
@@ -453,8 +438,6 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
     if (!architecture || !selectedComponentId) return undefined;
     const member = architecture.nodes.find((n) => n.id === selectedComponentId);
     if (!member) return undefined;
-    // Neighbours are graph nodes, or externals stood in for by a minimal
-    // node-shaped record so the flow list can name them.
     const otherFor = (id: string): GraphNode | undefined => {
       const real = byId.get(id);
       if (real) return real;
@@ -486,8 +469,6 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
     [graph.nodes, selectedNodeId],
   );
 
-  /** A path link inside the source viewer: follow the import graph to
-   * another file without leaving. On the map, that also moves the selection. */
   function navigateTo(id: string) {
     const target = byId.get(id);
     if (!target) {
@@ -525,8 +506,6 @@ export function Viewer({ graph, onBack, theme, onToggleTheme, live = null }: Pro
     return languageOf(node.id) ? "code" : "other";
   }
 
-  /** A file card's colours come from its kind (language, docs, config) as
-   * CSS variables, so one rule in Viewer.css styles every kind. */
   function toneVars(node: GraphNode): CSSProperties {
     const tone = node.type === "file" ? toneOf(node.id, theme) : null;
     if (!tone) return {};

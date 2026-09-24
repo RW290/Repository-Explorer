@@ -80,7 +80,6 @@ class Reporter:
                 stage["seconds"] = round(time.time() - stage["started"], 1)
 
     def note(self, text: str) -> None:
-        """Free-form status line, for callers that only have a sentence."""
         with self._lock:
             self.text = text
 
@@ -98,8 +97,6 @@ class Reporter:
     # -- partial graph -----------------------------------------------------
 
     def publish(self, graph: dict) -> None:
-        """Snapshot the working graph. Copied, because the pipeline keeps
-        mutating its own while a request thread serializes this one."""
         snapshot = copy.deepcopy(graph)
         with self._lock:
             self._partial = snapshot

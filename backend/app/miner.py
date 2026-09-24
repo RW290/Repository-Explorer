@@ -147,9 +147,6 @@ Pull requests:
 
 
 def parse_extractions(raw: str) -> list[dict]:
-    """The model's JSON array of extractions, tolerantly. Replies arrive
-    wrapped in fences or prose, or cut off mid-array; every complete object is
-    kept, so one malformed reply costs the broken entries, not the batch."""
     cleaned = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     for candidate in (cleaned, cleaned[cleaned.find("[") : cleaned.rfind("]") + 1] if "[" in cleaned else ""):
         if not candidate:
@@ -246,9 +243,6 @@ _TRANSIENT_NETWORK_MARKERS = ("connection reset", "timed out", "timeout", "eof",
 
 
 def _fetch_with_retry(owner: str, name: str, attempts: int = 3) -> list[RawPR]:
-    """A dropped connection to GitHub minutes into an analysis shouldn't throw
-    the whole thing away. Only network-shaped failures are retried: a missing
-    token or a private repo won't fix itself and should surface at once."""
     for attempt in range(attempts):
         try:
             return fetch_merged_prs(owner, name)

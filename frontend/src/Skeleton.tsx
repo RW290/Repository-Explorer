@@ -22,8 +22,6 @@ export function SkeletonLines({ lines = 3, className = "" }: { lines?: number; c
   );
 }
 
-/** Source code still loading: a gutter and ragged lines, indented in runs
- * the way real code is. */
 export function CodeSkeleton({ lines = 26 }: { lines?: number }) {
   const shape = [38, 0, 52, 61, 44, 70, 33, 0, 47, 58, 66, 40, 25, 0, 55, 72, 49, 36, 63, 0, 42, 57, 30, 68, 51, 45];
   const indent = [0, 0, 0, 1, 1, 2, 2, 0, 0, 1, 2, 2, 1, 0, 0, 1, 1, 2, 1, 0, 0, 1, 1, 2, 1, 0];
@@ -44,9 +42,6 @@ export function CodeSkeleton({ lines = 26 }: { lines?: number }) {
   );
 }
 
-/** The source viewer's lazy chunk still loading: the modal's frame with code
- * and side-bar placeholders. Styled here rather than with SourceViewer.css,
- * which ships inside the very chunk this is standing in for. */
 export function SourceViewerSkeleton() {
   return (
     <div className="source-skeleton" role="status" aria-label="Opening source">
@@ -68,7 +63,6 @@ export function SourceViewerSkeleton() {
   );
 }
 
-/** The architecture map still loading: a few group boxes with nodes in them. */
 export function MapSkeleton({ label }: { label?: string }) {
   const groups = [2, 4, 3, 2];
   return (
@@ -88,8 +82,6 @@ export function MapSkeleton({ label }: { label?: string }) {
   );
 }
 
-/** The whole viewer, before there is any graph at all: top bar, overview
- * prose, a grid of folder cards. */
 export function ViewerSkeleton() {
   return (
     <div className="viewer-skeleton" aria-hidden="true">

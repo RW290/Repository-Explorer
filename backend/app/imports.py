@@ -69,8 +69,6 @@ _JS_OUTPUT_TO_SOURCE = {".js": (".ts", ".tsx"), ".jsx": (".tsx",), ".mjs": (".mt
 
 @dataclass
 class RepoIndex:
-    """Everything resolvers need to know about the repo, built once."""
-
     root: Path
     files: set[str]
     dirs: dict[str, list[str]] = field(default_factory=dict)  # dir -> files directly in it
@@ -104,10 +102,6 @@ class RepoIndex:
         return self._memo[key]
 
     def by_suffix(self, suffix: str, near: str) -> str | None:
-        """The known file equal to `suffix` or ending in `/suffix`. When several
-        match (two packages each with a `utils/config.py`), the one sharing
-        the longest directory prefix with the importing file wins — imports
-        overwhelmingly point at the nearer of two same-named files."""
         suffix = suffix.strip("/")
         if not suffix:
             return None
@@ -127,7 +121,6 @@ class RepoIndex:
         return min(candidates, key=closeness)
 
     def ancestors(self, rel: str) -> list[str]:
-        """Directories from the file's own outward to the repo root ("")."""
         out = []
         current = posixpath.dirname(rel)
         while True:
@@ -138,7 +131,6 @@ class RepoIndex:
 
 
 def _norm(path: str) -> str | None:
-    """Normalized repo-relative path, or None if it escapes the repo."""
     normalized = posixpath.normpath(path)
     if normalized.startswith("../") or normalized == ".." or normalized.startswith("/"):
         return None
@@ -155,15 +147,6 @@ def _join(directory: str, *parts: str) -> str | None:
 
 
 def _python_roots(index: RepoIndex, rel: str) -> list[str]:
-    """Directories an absolute import may be rooted at, nearest first.
-
-    Python resolves `import a.b` against sys.path, which static analysis
-    can't see — so infer it from layout: the importing file's own ancestors
-    (a script's directory, or the directory above its package chain, is on
-    the path when it runs), then project directories (anything with a
-    pyproject.toml/setup.py, and their src/), then the classic repo-level
-    roots."""
-
     def project_roots() -> list[str]:
         roots: list[str] = []
         for marker in ("pyproject.toml", "setup.py", "setup.cfg"):
@@ -198,8 +181,6 @@ def _python_deps(index: RepoIndex, rel: str, text: str) -> set[str]:
     here = posixpath.dirname(rel)
 
     def add_module(base: str | None, names: list[str]) -> bool:
-        """`base` is a module path without extension. Imported names may
-        themselves be submodules (`from pkg import mod`), so try those too."""
         if base is None:
             return False
         found = False
@@ -261,8 +242,6 @@ _JS_IMPORT_PATTERNS = [
 
 
 def _strip_json_comments(text: str) -> str:
-    """tsconfig is JSON-with-comments. A regex can't tell `//` in a comment
-    from `//` in "https://…", so walk it with string state."""
     out: list[str] = []
     i, n = 0, len(text)
     in_string = False
@@ -293,7 +272,6 @@ def _strip_json_comments(text: str) -> str:
 
 
 def _load_ts_config(index: RepoIndex, config_path: str, depth: int = 0) -> dict:
-    """{'base': dir baseUrl resolves to or None, 'paths': [(prefix, suffix, [targets])]}"""
     text = index.read(config_path)
     if text is None:
         return {"base": None, "paths": []}
@@ -344,8 +322,6 @@ def _nearest_ts_config(index: RepoIndex, rel: str) -> dict:
 
 
 def _workspace_packages(index: RepoIndex) -> dict[str, str]:
-    """package.json `name` → its directory, for monorepo cross-package imports."""
-
     def build() -> dict[str, str]:
         packages: dict[str, str] = {}
         for f in index.by_basename.get("package.json", []):
@@ -364,7 +340,6 @@ def _workspace_packages(index: RepoIndex) -> dict[str, str]:
 
 
 def _js_resolve_path(index: RepoIndex, base: str | None) -> str | None:
-    """Node/bundler file resolution for an extensionless-or-not base path."""
     if base is None:
         return None
     if base in index.files:
@@ -516,8 +491,6 @@ _RUST_ROOT_FILES = {"mod.rs", "lib.rs", "main.rs"}
 
 
 def _rust_crates(index: RepoIndex) -> list[tuple[str, str]]:
-    """(crate name as written in `use`, crate src dir), one per Cargo.toml."""
-
     def build() -> list[tuple[str, str]]:
         crates = []
         for f in index.by_basename.get("Cargo.toml", []):
@@ -536,8 +509,6 @@ def _rust_crates(index: RepoIndex) -> list[tuple[str, str]]:
 
 
 def _rust_module_file(index: RepoIndex, base_dir: str, segments: list[str]) -> str | None:
-    """Longest resolvable prefix of a module path: `a::b::Thing` is b.rs if it
-    exists, else a.rs (Thing and b being items inside it)."""
     for end in range(len(segments), 0, -1):
         stem = posixpath.join(base_dir, *segments[:end]) if base_dir else posixpath.join(*segments[:end])
         for candidate in (f"{stem}.rs", f"{stem}/mod.rs"):
@@ -822,9 +793,6 @@ def _html_deps(index: RepoIndex, rel: str, text: str) -> set[str]:
 
 
 def _component_deps(index: RepoIndex, rel: str, text: str) -> set[str]:
-    """Vue/Svelte/Astro single-file components: JS imports in the script
-    block, stylesheet imports in the style block. The patterns are specific
-    enough to run over the whole file."""
     return _js_deps(index, rel, text) | _style_deps(index, rel, text)
 
 
@@ -860,8 +828,6 @@ def resolver_for(rel: str) -> Resolver | None:
 
 
 def build_dependency_graph(repo_root: Path, files: list[Path]) -> dict[str, list[str]]:
-    """Every file gets an entry (possibly empty). Edges only ever point at
-    files in `files`, never at itself, and never outside the repo."""
     rels = [f.relative_to(repo_root).as_posix() for f in files]
     index = RepoIndex.build(repo_root, rels)
     graph: dict[str, list[str]] = {}

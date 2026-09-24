@@ -83,8 +83,6 @@ def load_symbol_explainers(owner: str, name: str, path: str | None = None) -> li
 
 
 def replace_symbol_explainers(owner: str, name: str, path: str, entries: list[dict]) -> None:
-    """Explainers are generated for a whole file at once, so they're
-    replaced as a set for that path rather than appended one at a time."""
     store_path = _store_path(owner, name, "symbol_explainers")
     with _lock:
         existing = json.loads(store_path.read_text()) if store_path.exists() else []

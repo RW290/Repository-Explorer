@@ -13,13 +13,6 @@ const CHILD_SPACING = 220;
 // (ceil(sqrt(n))) would spread them wider than the band left over for them.
 const MAX_FOLDER_COLS = 3;
 
-/**
- * Places top-level folders in rows (wrapping past MAX_FOLDER_COLS) in the
- * band below the project overview, then clusters each folder's children
- * tightly around it. Zooming just multiplies these coordinates by the camera
- * scale, so a folder's children spread out from an invisible cluster into a
- * readable grid without a separate per-level layout pass.
- */
 export function computeLayout(nodes: GraphNode[]): Record<string, Point> {
   const positions: Record<string, Point> = {};
 
@@ -63,10 +56,6 @@ export function computeLayout(nodes: GraphNode[]): Record<string, Point> {
 const NODE_W = 196;
 const NODE_H = 150;
 
-/** Center of the folder grid's bounding box, which the repo-level camera
- * frames. The project overview is not part of this composition: it's a
- * screen-space overlay, so its size doesn't depend on how many folders there
- * are, and the folder count doesn't shrink the prose. */
 export function repoViewCenter(folders: Point[]): Point {
   if (folders.length === 0) return { x: 0, y: 0 };
   const xs = folders.map((p) => p.x);
@@ -77,11 +66,6 @@ export function repoViewCenter(folders: Point[]): Point {
   };
 }
 
-/** Scale that fits a set of world points (plus node size) inside the canvas, so a folder's
- * children stay on screen regardless of how many there are or how the layout spaced them.
- * `extraHeight` accommodates one outsized point (the project overview hub card) that's much
- * taller than a standard node — passing it avoids clipping that card without needing per-point
- * sizes threaded through the whole fit calculation. */
 export function fitScale(
   points: Point[],
   canvasW: number,

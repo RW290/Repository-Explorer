@@ -26,10 +26,6 @@ export async function fetchFixture(): Promise<Graph> {
   return asJson(await fetch(`${API_BASE}/api/graph`));
 }
 
-// Starts analysis of a real repo. Returns immediately: either status "done"
-// (repo was already cached) or a job_id to poll with pollAnalysis — the
-// pipeline runs as a background job because it can take several minutes,
-// far longer than a typical hosting platform's request timeout.
 export async function startAnalysis(repoUrl: string, forceRefresh = false): Promise<AnalysisStatus> {
   return asJson(
     await fetch(`${API_BASE}/api/analyze`, {
@@ -40,15 +36,10 @@ export async function startAnalysis(repoUrl: string, forceRefresh = false): Prom
   );
 }
 
-// `have` is the partial-graph version already held: the backend leaves the
-// graph out of the reply unless it's newer, so frequent polls stay tiny.
 export async function pollAnalysis(jobId: string, have = 0): Promise<AnalysisStatus> {
   return asJson(await fetch(`${API_BASE}/api/analyze/${jobId}?have=${have}`));
 }
 
-// Parses "owner/name" out of a GitHub repo URL, mirroring the backend's
-// parse_repo_url. Returns null for anything that isn't a github.com repo URL
-// (e.g. the fixture demo's graph, whose repo_url is null).
 export function parseRepoUrl(repoUrl: string | null): { owner: string; name: string } | null {
   if (!repoUrl) return null;
   const match = repoUrl.trim().match(/github\.com[:/]([^/]+)\/([^/.]+?)(?:\.git)?\/?$/);
@@ -128,10 +119,6 @@ export async function askAboutProject(owner: string, name: string, question?: st
   );
 }
 
-// Builds (or returns the cached) semantic architecture map for an analyzed
-// repo. New analyses include it in the graph already; this backfills repos
-// cached before the stage existed. One LLM call, so expect tens of seconds
-// the first time and instant afterwards.
 export async function buildArchitecture(
   owner: string,
   name: string,
@@ -159,9 +146,6 @@ export async function buildArchitecture(
   return result.architecture;
 }
 
-// One-line explainers for every function/class in a file. The first call
-// for a file generates them (one batched LLM call, tens of seconds); later
-// calls return the stored set.
 export async function ensureSymbolExplainers(owner: string, name: string, path: string): Promise<SymbolExplainer[]> {
   const res = await fetch(`${API_BASE}/api/repos/${owner}/${name}/symbol-explainers`, {
     method: "POST",
@@ -179,8 +163,6 @@ export async function fetchArchitectureRationales(owner: string, name: string): 
   return asJson(await fetch(`${API_BASE}/api/repos/${owner}/${name}/architecture-rationales`));
 }
 
-// Ask about the architecture map. `focus` is what the reader has selected on
-// the map, which is what "this section" in their question refers to.
 export async function askAboutArchitecture(
   owner: string,
   name: string,

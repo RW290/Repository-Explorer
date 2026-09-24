@@ -104,20 +104,6 @@ def call_llm(
     think: str | None = None,
     max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> str:
-    """Send one prompt, return the raw text response.
-
-    `temperature` is left at the model's default unless a caller asks
-    otherwise; a structured-JSON task (the architecture map) runs cooler so
-    two runs over the same repo land on similar graphs.
-
-    `think` is the reasoning effort ("low" | "medium" | "high") for models
-    that have one. It is the single biggest latency lever here: gpt-oss at
-    its default effort writes ~9,000 characters of hidden reasoning to produce
-    a ~5,000 character batch of file summaries (~50s); at "low" it writes ~50
-    (~27s), with summaries of the same quality. Summarizing is recall and
-    phrasing, not multi-step deduction, so the reasoning bought nothing.
-    Callers leave it unset for the tasks where it might: PR rationale and
-    the architecture map."""
     global _think_supported
     # `max_tokens` bounds reasoning + answer together (see the runaway note
     # above). Generous is fine — it is a fuse, not a target.
@@ -144,10 +130,6 @@ def call_llm(
 
 
 def _stream_to_text(chunks, ceiling: int) -> str:
-    """Drain a streamed chat response into its answer text. Reasoning tokens
-    arrive in a separate field and are discarded — they still do their job
-    here by keeping the connection busy, and they count toward the ceiling,
-    since a loop is as likely in the reasoning as in the answer."""
     started = time.time()
     parts: list[str] = []
     seen = 0
@@ -173,7 +155,6 @@ def _stream_to_text(chunks, ceiling: int) -> str:
 
 
 def _translate_model_error(e: Exception, model: str) -> PipelineError:
-    """Turn a raw ollama-python exception into something worth reading."""
     status_code = getattr(e, "status_code", None)
     text = str(e)
     lowered = text.lower()
@@ -218,12 +199,6 @@ def _translate_model_error(e: Exception, model: str) -> PipelineError:
 
 
 def call_with_retry(fn: Callable[[], T], max_retries: int = 5) -> T:
-    """Retry-with-backoff wrapper for call_llm invocations.
-
-    Only retries genuinely transient failures. A bad key or a retired
-    model won't fix themselves within a backoff window, so those surface
-    immediately with an explanation instead of burning five attempts first.
-    """
     for attempt in range(max_retries):
         try:
             return fn()

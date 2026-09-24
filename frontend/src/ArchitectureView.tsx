@@ -102,9 +102,6 @@ function mermaidIdOf(el: Element): string | null {
   return match ? match[1] : null;
 }
 
-/** The summary's opening sentence, for the node's description line. Model
- * summaries often start with "This file …" or the file name — trimmed so the
- * line spends its few words on the point. */
 function firstSentence(summary: string): string | null {
   const text = summary.replace(/\s+/g, " ").trim();
   if (!text) return null;
@@ -112,22 +109,15 @@ function firstSentence(summary: string): string | null {
   return sentence.replace(/^(?:this (?:file|module|script|component)|the file|`[^`]+`)\s+/i, "").trim() || sentence;
 }
 
-/** Group id for a rendered cluster element. Mermaid names it
- * `[<renderId>-]g_<groupId>`, from the id the compiler assigned. */
 function groupIdOf(el: Element, known: Set<string>): string | null {
   const match = /g_([a-z0-9_]+)$/.exec(el.id);
   return match && known.has(match[1]) ? match[1] : null;
 }
 
-/** Files a map node stands for: itself, or a folder's direct children. */
 function filesOf(node: GraphNode, childrenOf: Map<string, GraphNode[]>): GraphNode[] {
   return node.type === "folder" ? childrenOf.get(node.id) ?? [] : [node];
 }
 
-/** Turns the backend's map (real node ids + groups + flows) into what the
- * compiler draws: names and kinds from the graph, plus — optionally — every
- * other import between map nodes, so a reader can check the model's chosen
- * flows against the whole truth. */
 function buildModel(architecture: Architecture, nodes: GraphNode[], allImports: boolean): MapModel {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const childrenOf = new Map<string, GraphNode[]>();
@@ -186,12 +176,6 @@ function buildModel(architecture: Architecture, nodes: GraphNode[], allImports: 
   return { groups: architecture.groups, nodes: mapNodes, edges };
 }
 
-/** Tight bounds of the drawn content in SVG user units. Mermaid's own
- * viewBox comes out far larger than the diagram (stray measurement text and
- * off-canvas label boxes get included), which would fit the map at a
- * fraction of the size it deserves. Measuring the elements that actually
- * make up the picture — clusters, nodes, edges, edge labels — and mapping
- * each through its screen transform sidesteps whatever else is in there. */
 function contentBounds(svg: SVGSVGElement): { x: number; y: number; w: number; h: number } | null {
   const toUser = svg.getScreenCTM()?.inverse();
   if (!toUser) return null;
@@ -227,10 +211,6 @@ function contentBounds(svg: SVGSVGElement): { x: number; y: number; w: number; h
   return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
 }
 
-/** Style a node label's lines by role: line 1 is the name, line 2 the
- * context line, anything after is description. Handles both label modes
- * Mermaid may produce: SVG text (one tspan per line) or an HTML
- * foreignObject (text + <br>). */
 function markTypeLines(node: SVGGElement) {
   const tspans = node.querySelectorAll("tspan.text-outer-tspan");
   if (tspans.length > 1) {

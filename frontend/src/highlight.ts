@@ -24,15 +24,6 @@ function escapeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-/**
- * Splits highlight.js output into one HTML string per line.
- *
- * hljs emits spans that freely straddle newlines (a docstring or block
- * comment is one span covering many lines), but the viewer needs a real
- * element per line — that's what aligns the gutter and what lets a text
- * selection be mapped back to line numbers. So any span still open at a
- * newline is closed to end the line and reopened at the start of the next.
- */
 function splitHighlightedLines(html: string): string[] {
   const lines: string[] = [];
   const open: string[] = [];
@@ -59,9 +50,6 @@ function splitHighlightedLines(html: string): string[] {
   return lines;
 }
 
-/** Per-line highlighted HTML for a file, or plain escaped lines when the
- * language isn't one we recognise (highlighting the wrong grammar looks far
- * worse than none at all). */
 export function highlightLines(content: string, path: string): string[] {
   // Mirrors Python's str.splitlines(), which the backend uses for all line
   // numbering: one trailing newline shouldn't produce a phantom extra line.

@@ -78,9 +78,6 @@ const CATEGORY_TONES: Record<Theme, Record<Category, Tone>> = {
 
 const DESC_MAX_CHARS = 92;
 
-/** Trim a description to fit two wrapped lines. Mermaid does the actual
- * word-wrapping (see flowchart.wrappingWidth in ArchitectureView) — hand
- * inserted breaks would just get re-wrapped on top. */
 export function trimDescription(text: string): string {
   const clean = text.replace(/\s+/g, " ").trim();
   if (clean.length <= DESC_MAX_CHARS) return clean;
@@ -116,9 +113,6 @@ export function categoryOf(id: string, type: "file" | "folder"): Category {
   return languageOf(id) ? "code" : "other";
 }
 
-// Mermaid decodes `#NN;` entities inside quoted labels; anything that could
-// read as syntax goes through that. `#` first, so the entities themselves
-// aren't re-escaped.
 function esc(text: string): string {
   return text
     .replace(/#/g, "#35;")
@@ -129,10 +123,6 @@ function esc(text: string): string {
     .replace(/[\r\n\t]+/g, " ");
 }
 
-/** `direction` is chosen by the view: it renders both and keeps whichever
- * fits the viewport larger, since a five-layer pipeline is a long strip one
- * way and a tall column the other, and which is worse depends on the
- * screen. */
 export function compileMap(model: MapModel, theme: Theme, direction: Direction = "LR"): Compiled {
   const idFor = new Map<string, string>();
   const pathFor = new Map<string, string>();

@@ -59,12 +59,10 @@ function kindOf(path: string): Kind | null {
   return KIND_BY_EXTENSION[ext] ?? null;
 }
 
-/** Display name of the file's kind ("TypeScript", "Docs", …), or null. */
 export function labelOf(path: string): string | null {
   return kindOf(path)?.label ?? null;
 }
 
-/** Language name for a *source* file; null for docs, config and the rest. */
 export function languageOf(path: string): string | null {
   const kind = kindOf(path);
   return kind?.code ? kind.label : null;
@@ -79,8 +77,6 @@ export interface Tone {
 }
 
 function hslToHex(h: number, s: number, l: number): string {
-  // Hex, not hsl(): these also go into Mermaid `classDef` lines, whose
-  // parser can't take parentheses.
   const a = (s / 100) * Math.min(l / 100, 1 - l / 100);
   const channel = (n: number) => {
     const t = (n + h / 30) % 12;
@@ -92,7 +88,6 @@ function hslToHex(h: number, s: number, l: number): string {
 
 const toneCache = new Map<string, Tone>();
 
-/** Colours for a file's kind in the given theme, or null if it has none. */
 export function toneOf(path: string, theme: Theme): Tone | null {
   const kind = kindOf(path);
   if (!kind) return null;
@@ -122,7 +117,6 @@ export function toneOf(path: string, theme: Theme): Tone | null {
   return tone;
 }
 
-/** The kinds present among `paths`, most common first, for a legend. */
 export function legendFor(paths: string[], theme: Theme, max = 5): { label: string; color: string }[] {
   const counts = new Map<string, { count: number; path: string }>();
   paths.forEach((path) => {

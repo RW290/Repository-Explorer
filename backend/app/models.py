@@ -66,11 +66,6 @@ class ArchitectureEdge(BaseModel):
 
 
 class Architecture(BaseModel):
-    """Semantic map: a handful of groups (Frontend, API, LLM, …) over a
-    couple dozen of the graph's own file/folder nodes, plus the main flows
-    between them. Generated once per analysis by architecture.py and
-    compiled to a Mermaid diagram in the browser."""
-
     groups: list[ArchitectureGroup]
     nodes: list[ArchitectureNode]
     edges: list[ArchitectureEdge]
@@ -117,9 +112,6 @@ class FileRationale(BaseModel):
 
 
 class ArchitectureRationale(BaseModel):
-    """A question asked about the architecture map, optionally focused on one
-    group or node, with its answer. Shared with everyone who opens the repo."""
-
     id: str
     question: str
     answer: str
@@ -130,9 +122,6 @@ class ArchitectureRationale(BaseModel):
 
 
 class SymbolExplainer(BaseModel):
-    """One-line explanation of a function, method or class, generated for a
-    whole file at once the first time it's opened (see symbols.py)."""
-
     id: str
     path: str
     name: str

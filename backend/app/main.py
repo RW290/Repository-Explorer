@@ -134,11 +134,6 @@ def health() -> dict:
 
 @app.get("/")
 def serve_frontend() -> FileResponse:
-    """Serve the built SPA in production.
-
-    Local development uses Vite on port 5000, while published deployments run
-    one FastAPI process that serves both the API and the compiled frontend.
-    """
     index = FRONTEND_DIST / "index.html"
     if not index.is_file():
         raise HTTPException(status_code=404, detail="Frontend build not found")
@@ -147,9 +142,6 @@ def serve_frontend() -> FileResponse:
 
 @app.get("/api/graph", response_model=Graph)
 def get_graph(repo_url: str | None = Query(default=None)) -> Graph:
-    """Synchronous path — fine for local dev/self-hosting, but a hosted
-    deployment should use POST /api/analyze instead to avoid request
-    timeouts on an uncached repo."""
     if repo_url is None:
         data = (FIXTURES_DIR / "sample_graph.json").read_text()
         return Graph.model_validate_json(data)
@@ -186,9 +178,6 @@ def start_analysis(payload: AnalyzeRequest) -> AnalysisStatus:
 
 @app.get("/api/analyze/{job_id}", response_model=AnalysisStatus)
 def get_analysis(job_id: str, have: int = Query(default=0)) -> AnalysisStatus:
-    """Poll a job. `have` is the partial-graph version the client already
-    holds: the graph (tens of KB) is only sent again when it has changed,
-    so polling every second costs a few hundred bytes most of the time."""
     job = get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="No job with that id")
@@ -211,10 +200,6 @@ def get_analysis(job_id: str, have: int = Query(default=0)) -> AnalysisStatus:
 
 @app.get("/api/repos/{owner}/{name}/file", response_model=FileContentResponse)
 def get_file_content(owner: str, name: str, path: str = Query(...)) -> FileContentResponse:
-    """Raw source for the in-viewer code panel. Fetched on demand rather than
-    stored during analysis — most files in a repo are never opened, so
-    caching every file's full text in the analysis cache would mostly be
-    waste."""
     try:
         content = github_client.file_contents(owner, name, path)
     except PipelineError as e:
@@ -225,10 +210,6 @@ def get_file_content(owner: str, name: str, path: str = Query(...)) -> FileConte
 
 @app.post("/api/repos/{owner}/{name}/architecture", response_model=ArchitectureResponse)
 def build_architecture(owner: str, name: str, payload: ArchitectureRequest) -> ArchitectureResponse:
-    """Generates (or regenerates) the semantic architecture map for an
-    already-analyzed repo. New analyses produce it inline; this exists so
-    repos cached before the stage existed get one on first open without a
-    full re-analysis, which would cost minutes and real LLM quota."""
     if load_cached(f"https://github.com/{owner}/{name}") is None:
         raise HTTPException(status_code=404, detail="This repository hasn't been analyzed yet.")
     try:
@@ -245,9 +226,6 @@ def get_rationales(owner: str, name: str, path: str = Query(...)) -> list[dict]:
 
 @app.post("/api/repos/{owner}/{name}/rationales", response_model=LineRationale)
 def create_rationale(owner: str, name: str, payload: ExplainRequest) -> dict:
-    """Answers one "why is this used?" question about a highlighted range of
-    lines, then persists it — shared for everyone who later opens this same
-    repo, not just the person who asked."""
     if payload.start_line < 1 or payload.end_line < payload.start_line:
         raise HTTPException(status_code=400, detail="Invalid line range.")
 
@@ -306,10 +284,6 @@ def get_architecture_rationales(owner: str, name: str) -> list[dict]:
 
 @app.post("/api/repos/{owner}/{name}/architecture-rationales", response_model=ArchitectureRationale)
 def create_architecture_rationale(owner: str, name: str, payload: ArchitectureExplainRequest) -> dict:
-    """Answers a question about the architecture map. The model is handed the
-    map itself — groups, member files with their summaries, every flow and
-    whether imports back it — plus whatever the reader has selected, so the
-    answer is about this diagram rather than about architecture in general."""
     cached = load_cached(f"https://github.com/{owner}/{name}")
     if cached is None:
         raise HTTPException(status_code=404, detail="This repository hasn't been analyzed yet.")
@@ -338,10 +312,6 @@ def create_architecture_rationale(owner: str, name: str, payload: ArchitectureEx
 
 @app.post("/api/repos/{owner}/{name}/symbol-explainers", response_model=list[SymbolExplainer])
 def ensure_symbol_explainers(owner: str, name: str, payload: SymbolExplainRequest) -> list[dict]:
-    """One-line explainers for every function/class in a file, generated
-    proactively the first time the file is opened in the source viewer and
-    persisted for everyone after. POST rather than GET because the first
-    call has a side effect (one batched LLM call); later calls just read."""
     if not payload.force_refresh:
         cached = rationale_store.load_symbol_explainers(owner, name, payload.path)
         if cached:
@@ -376,10 +346,6 @@ def get_file_rationales(owner: str, name: str, path: str = Query(...)) -> list[d
 
 @app.post("/api/repos/{owner}/{name}/file-rationales", response_model=FileRationale)
 def create_file_rationale(owner: str, name: str, payload: FileExplainRequest) -> dict:
-    """Answers "why does this file exist in the wider project?" using the
-    file's recorded summary and its place in the dependency graph (what it
-    depends on, what depends on it), then persists it the same way
-    line-level rationale is."""
     cached = load_cached(f"https://github.com/{owner}/{name}")
     if cached is None:
         raise HTTPException(status_code=404, detail="This repository hasn't been analyzed yet.")
@@ -415,8 +381,6 @@ def get_project_rationales(owner: str, name: str) -> list[dict]:
 
 @app.post("/api/repos/{owner}/{name}/project-rationales", response_model=ProjectRationale)
 def create_project_rationale(owner: str, name: str, payload: ProjectExplainRequest) -> dict:
-    """Answers a follow-up question about the whole project, grounded in its
-    generated overview, then persists it the same way file/line rationale is."""
     cached = load_cached(f"https://github.com/{owner}/{name}")
     if cached is None:
         raise HTTPException(status_code=404, detail="This repository hasn't been analyzed yet.")
@@ -438,7 +402,6 @@ def create_project_rationale(owner: str, name: str, payload: ProjectExplainReque
 
 @app.get("/{frontend_path:path}")
 def serve_frontend_assets(frontend_path: str) -> FileResponse:
-    """Serve Vite assets and fall back to index.html for SPA routes."""
     requested = (FRONTEND_DIST / frontend_path).resolve()
     dist_root = FRONTEND_DIST.resolve()
     if requested.is_relative_to(dist_root) and requested.is_file():

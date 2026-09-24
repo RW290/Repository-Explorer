@@ -85,9 +85,6 @@ def _clean_text(raw: object, limit: int) -> str | None:
 
 
 def _describe_graph(nodes: list[dict]) -> str:
-    """Compact listing the model reads: folders first, then files ordered so
-    that files with real import edges (the architecturally interesting ones)
-    survive truncation ahead of docs and config."""
     files = [n for n in nodes if n["type"] == "file"]
     folders = [n for n in nodes if n["type"] == "folder"]
     dependents: dict[str, int] = {}
@@ -190,9 +187,6 @@ def _parse_json_object(raw: str) -> dict:
 
 
 def _resolve_path(raw: object, node_ids: set[str]) -> str | None:
-    """Exact match preferred; a unique suffix match tolerates the model
-    dropping a leading folder. Anything else becomes null rather than a
-    guess — the diagram must never link to a file that isn't there."""
     if not raw:
         return None
     path = str(raw).strip().strip("/")
@@ -212,8 +206,6 @@ def _files_for(path: str | None, nodes_by_id: dict[str, dict], children: dict[st
 
 
 def _mark_backed(nodes: list[dict], edges: list[dict], nodes_by_id: dict[str, dict], children: dict[str, list[str]]) -> None:
-    """Which edges do the real imports vouch for? Either direction counts —
-    the model draws data flow, which may run opposite to the import."""
     files_by_node = {n["id"]: _files_for(n["id"], nodes_by_id, children) for n in nodes}  # externals → empty set
     for e in edges:
         src_files, dst_files = files_by_node.get(e["source"], set()), files_by_node.get(e["target"], set())
@@ -223,9 +215,6 @@ def _mark_backed(nodes: list[dict], edges: list[dict], nodes_by_id: dict[str, di
 
 
 def recompute_backing(architecture: dict, graph_nodes: list[dict]) -> None:
-    """Re-verify an existing map's flows against a changed import graph (the
-    resolver learned a language, say). The map itself is the model's and is
-    left alone; only the solid/dashed verdict on each edge is refreshed."""
     nodes_by_id = {n["id"]: n for n in graph_nodes}
     children: dict[str, list[str]] = {}
     for n in graph_nodes:
@@ -235,9 +224,6 @@ def recompute_backing(architecture: dict, graph_nodes: list[dict]) -> None:
 
 
 def validate_architecture(raw: dict, graph_nodes: list[dict]) -> tuple[dict | None, list[str]]:
-    """Normalize the model's JSON into the stored shape, returning the cleaned
-    AST plus a list of problems worth feeding back for a repair attempt.
-    Returns (None, problems) when what's left isn't worth drawing."""
     problems: list[str] = []
     nodes_by_id = {n["id"]: n for n in graph_nodes}
     node_ids = set(nodes_by_id)
@@ -365,10 +351,6 @@ def validate_architecture(raw: dict, graph_nodes: list[dict]) -> tuple[dict | No
 def generate_architecture(
     owner: str, name: str, graph: dict, on_stage: Callable[[str], None] | None = None
 ) -> dict | None:
-    """Best-effort, like the overview: the file graph is the product, the map
-    is an orientation aid, so a failure here returns None rather than
-    failing the whole analysis. One repair round-trip if the first attempt's
-    validation turned up hard problems (missing paths, dangling edges)."""
     listing = _describe_graph(graph["nodes"])
     overview = graph.get("overview") or ""
     feedback: str | None = None

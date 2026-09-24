@@ -65,9 +65,6 @@ export function FlowList({
   );
 }
 
-/** A node's PR history, oldest first. Stated and inferred rationale are
- * styled differently on purpose: the reader should never have to wonder
- * which one they are looking at. */
 export function AnnotationList({ annotations }: { annotations: Annotation[] }) {
   const sorted = [...annotations].sort((a, b) => a.date.localeCompare(b.date));
   if (sorted.length === 0) {

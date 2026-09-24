@@ -190,8 +190,6 @@ SUMMARY_UNAVAILABLE = "Summary unavailable (the model's response for this file c
 
 
 def _templated_summary(path: str, text: str) -> str | None:
-    """A summary that needs no model: well-known boilerplate, or a file with
-    nothing in it to summarize."""
     name = Path(path).name.lower()
     if name in _BOILERPLATE_NAMES:
         return _BOILERPLATE_NAMES[name]
@@ -289,8 +287,6 @@ def summarize_files(
     reporter: Reporter | None = None,
     on_batch: Callable[[dict[str, str]], None] | None = None,
 ) -> dict[str, str]:
-    """Summaries for every file node. `on_batch` fires as each batch lands
-    (from worker threads) so the caller can stream them to the viewer."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     summaries: dict[str, str] = {}
@@ -416,10 +412,6 @@ rather than running together with the prose.
 def generate_overview(
     repo_root: Path, owner: str, name: str, folder_summaries: list[str], reporter: Reporter | None = None
 ) -> str:
-    """Best-effort: an overview is a nice-to-have orientation, not core to the
-    graph, so a transient LLM failure degrades to an empty string rather than
-    failing the whole analysis. It reads only the README and the folder
-    listing — not the file summaries — so it runs alongside them."""
     if reporter:
         reporter.start("overview")
     prompt = _overview_prompt(owner, name, _find_readme(repo_root), folder_summaries)
@@ -435,9 +427,6 @@ def generate_overview(
 
 
 def parse_structure(repo_url: str, workdir: Path, reporter: Reporter | None = None) -> tuple[Path, list[ParsedNode]]:
-    """Everything that needs no model: clone, discover, resolve imports, build
-    nodes and folder summaries. Seconds, and already a graph worth looking at
-    — which is why the pipeline publishes it before starting the slow part."""
     if reporter:
         reporter.start("clone")
     repo_root = clone_repo(repo_url, workdir)

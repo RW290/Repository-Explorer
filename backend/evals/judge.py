@@ -55,7 +55,6 @@ Return ONLY a JSON object: {{"winner": "A" | "B" | "tie", "reason": "one sentenc
 
 
 def judge_summaries(case: dict, left: dict, right: dict, sample: int = 6, seed: int = 0) -> dict:
-    """`left` and `right` are the `outputs` maps of two variants."""
     rng = random.Random(seed)
     by_path = {item["path"]: item for item in case["summaries"]}
     shared = [p for p in left if p in right and p in by_path and left[p] and right[p]]

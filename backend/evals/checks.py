@@ -23,11 +23,6 @@ def _shingles(text: str, n: int = 5) -> set[tuple[str, ...]]:
 
 
 def verbatim_overlap(generated: str, source: str) -> float:
-    """Share of the generated text's 5-word runs that appear word for word in
-    the source. Catches rationale that *quotes* the author instead of stating
-    the engineering reason — observed at low reasoning effort, where the
-    labels were right but the text was a copy ("Honestly I have no idea why
-    this lib used netloc…"). 0 is a full restatement, 1 a verbatim copy."""
     generated_shingles = _shingles(generated)
     if not generated_shingles:
         return 0.0
@@ -35,7 +30,6 @@ def verbatim_overlap(generated: str, source: str) -> float:
 
 
 def score_summaries(inputs: list[dict], outputs: dict[str, str]) -> dict:
-    """`outputs` maps path -> summary ("" or missing when the model skipped it)."""
     tiers = {item["path"]: item["tier"] for item in inputs}
     present = {p: s for p, s in outputs.items() if p in tiers and s and "unavailable" not in s.lower()}
     in_bounds = 0
@@ -90,7 +84,6 @@ def score_prs(inputs: list[dict], outputs: list[dict], labels: dict | None = Non
 
 
 def score_map(raw: dict | None, validated: dict | None, problems: list[str], labels: dict | None = None) -> dict:
-    """`raw` is what the model returned, `validated` what survived validation."""
     from app.architecture import EMPTY_LABELS
 
     if raw is None:
@@ -123,7 +116,6 @@ def score_map(raw: dict | None, validated: dict | None, problems: list[str], lab
 
 
 def score_graph(graph: dict) -> dict:
-    """Zero-cost checks over a finished analysis (a cached graph)."""
     files = [n for n in graph.get("nodes", []) if n["type"] == "file"]
     ids = {n["id"] for n in graph.get("nodes", [])}
     summarized = [n for n in files if n.get("summary") and "unavailable" not in n["summary"].lower()]

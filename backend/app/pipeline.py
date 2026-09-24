@@ -49,10 +49,6 @@ def load_cached(repo_url: str) -> dict | None:
 
 
 def ensure_architecture(owner: str, name: str, force: bool = False) -> dict | None:
-    """Backfill the architecture map for a repo analyzed before this stage
-    existed (or whose generation failed), writing it into the same cache
-    file so the next full load carries it. Returns None if there's no
-    analysis to build on or generation failed again."""
     cache_path = cache_path_for(owner, name)
     if not cache_path.exists():
         return None
@@ -71,18 +67,6 @@ def edges_are_stale(graph: dict) -> bool:
 
 
 def refresh_dependencies(repo_url: str, on_stage: Callable[[str], None] | None = None) -> dict:
-    """Recompute a cached analysis's import edges with the current resolver.
-
-    The expensive parts of an analysis are the LLM calls (summaries, PR
-    rationale, the map) and none of them depend on the resolver. The edges
-    are pure local computation over a fresh clone — seconds, zero quota — so
-    when the resolver improves, an old cache gets new edges without being
-    thrown away. Nodes stay exactly as analyzed: only files that still exist
-    are updated, and edges only ever point at nodes already in the graph, so
-    a repo that moved on since analysis can't introduce dangling ids.
-
-    Any failure here (GitHub down, repo deleted) returns the cache untouched:
-    stale edges are a worse graph, not a broken one."""
     owner, name = parse_repo_url(repo_url)
     cache_path = cache_path_for(owner, name)
     graph = json.loads(cache_path.read_text())
@@ -114,15 +98,6 @@ def run_pipeline(
     on_stage: Callable[[str], None] | None = None,
     reporter: Reporter | None = None,
 ) -> dict:
-    """Clone → structure → (summaries ‖ PR history ‖ overview) → merge → map.
-
-    Two things shape the ordering. First, structure needs no model, so the
-    graph is published to `reporter` seconds in and re-published as summaries
-    land: time-to-first-useful-view is decoupled from time-to-finished.
-    Second, the three model-bound stages in the middle don't depend on each
-    other — history needs only the file list, the overview only the README —
-    so they overlap instead of queueing. The map goes last because it is the
-    one stage that reads the summaries."""
     owner, name = parse_repo_url(repo_url)
     cache_path = cache_path_for(owner, name)
 

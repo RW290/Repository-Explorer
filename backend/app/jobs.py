@@ -45,9 +45,6 @@ _lock = threading.Lock()
 
 
 def start_job(repo_url: str, force_refresh: bool = False, refresh_edges_only: bool = False) -> Job:
-    """`refresh_edges_only` re-resolves imports for an already-cached repo (no
-    LLM, seconds) instead of running the whole pipeline — same job/poll
-    machinery, because it still involves a clone the request shouldn't block on."""
     job = Job(id=str(uuid.uuid4()), repo_url=repo_url)
     with _lock:
         _jobs[job.id] = job
@@ -69,9 +66,6 @@ def start_job(repo_url: str, force_refresh: bool = False, refresh_edges_only: bo
 
 
 def _friendly_error(e: Exception) -> str:
-    """PipelineError messages are already written for a reader (see errors.py).
-    Anything else is a bug rather than an expected failure, so say that plainly
-    instead of leaking a traceback fragment or an argv dump at the user."""
     if isinstance(e, PipelineError):
         return str(e)
     detail = str(e).splitlines()[0][:200] if str(e) else e.__class__.__name__

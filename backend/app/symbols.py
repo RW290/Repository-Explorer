@@ -157,8 +157,6 @@ def _parse(raw: str) -> list[dict]:
 
 
 def explain_symbols(path: str, content: str, file_summary: str | None = None) -> list[dict]:
-    """One batched call per ~30 symbols. A symbol the model skipped or
-    garbled simply gets no explainer, rather than a made-up one."""
     symbols = extract_symbols(path, content)
     if not symbols:
         return []

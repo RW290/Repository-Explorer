@@ -16,9 +16,6 @@ from app.llm import call_llm, call_with_retry
 
 @dataclass
 class Variant:
-    """`name` plus overrides for call_llm. `None` means "whatever production
-    uses for this call site", so `Variant("prod")` measures the shipped config."""
-
     name: str
     think: str | None = "__prod__"
     temperature: float | None = None

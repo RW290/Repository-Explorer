@@ -45,8 +45,6 @@ interface Selection {
   text: string;
 }
 
-/** Line number for a DOM node inside the code area, via its nearest
- * ancestor carrying data-line. */
 function lineOf(node: Node | null): number | null {
   const element = node instanceof Element ? node : node?.parentElement ?? null;
   const line = element?.closest<HTMLElement>("[data-line]");
@@ -160,8 +158,6 @@ export function SourceViewer({ owner, name, node, annotations, dependents, selec
     document.querySelector<HTMLElement>(`[data-line="${line}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
   }
 
-  /** Reads whatever the user just highlighted in the code area and turns it
-   * into a line range plus the exact selected text. */
   function captureSelection() {
     const domSelection = window.getSelection();
     if (!domSelection || domSelection.isCollapsed) return;
