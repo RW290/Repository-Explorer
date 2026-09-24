@@ -10,5 +10,3 @@ build/
 backend/.cache/
 *.egg-info/
 .DS_Store
-# Eval run outputs are local artifacts; frozen cases and the baseline are tracked.
-backend/evals/results/

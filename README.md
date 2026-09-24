@@ -22,7 +22,6 @@ from merged pull requests.
 ```
 backend/
   app/            FastAPI application and analysis pipeline
-  evals/          Evaluation harness for model output
   fixtures/       Demo graph served without network access
   tests/          Unit tests
 frontend/
@@ -173,28 +172,6 @@ Tests:
 ```bash
 cd backend && python -m unittest discover -s tests
 ```
-
-## Evaluation harness
-
-`backend/evals/` scores model output against frozen inputs.
-
-```bash
-cd backend
-python -m evals freeze psf/requests
-python -m evals check-graph .cache/psf__requests.json
-python -m evals run prs --variant default --variant low:think=low
-python -m evals run summaries --variant prod --sample 8
-python -m evals judge summaries low default --sample 6
-python -m evals accept evals/results/<file>.json low
-```
-
-| Component | Contents |
-|---|---|
-| `cases/` | Frozen inputs per repository |
-| `suites.py` | Runs one call site (summaries, PRs, architecture) under a variant |
-| `checks.py` | Deterministic scorers and gates |
-| `judge.py` | Pairwise model judge |
-| `baseline.json` | Accepted baseline scores |
 
 ## Configuration
 

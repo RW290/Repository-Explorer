@@ -183,15 +183,6 @@ def extract_rationales(owner: str, name: str, prs: list[RawPR], reporter: Report
 
     def run(batch: list[dict]) -> list[dict]:
         prompt = _extraction_prompt(batch)
-        # Low reasoning effort, like the other prompts — decided by the eval
-        # harness (`python -m evals run prs --variant default --variant
-        # low:think=low`), not by reading one output. Both efforts score the
-        # same on every check (coverage, stated/inferred kind, confidence,
-        # verbatim overlap with the author) and read the same side by side;
-        # low is ~25% faster, and this is the longest stage of an analysis.
-        # What actually stops the model quoting the author instead of stating
-        # the reason is the prompt's "restated… never copied" rule, which took
-        # mean verbatim overlap from 0.77 to under 0.03 at either effort.
         raw = call_with_retry(lambda: call_llm(prompt, think=EFFORT, max_tokens=1200 + len(batch) * 500))
         results = parse_extractions(raw)
         returned = {r.get("number") for r in results}
